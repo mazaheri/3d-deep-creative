@@ -9,7 +9,6 @@
     <meta property="og:description" content="Immersive 3D digital experiences and motion design.">
     <meta property="og:type" content="website">
     <link rel="preload" href="logo_3d_optimized.glb" as="fetch" crossorigin>
-    <link rel="preload" href="cloud_pulse.webm" as="video" type="video/webm">
     <script src="https://cdn.tailwindcss.com"></script>
     <script type="importmap">
     {
@@ -81,27 +80,7 @@
                     drop-shadow(0 0 1px rgba(118, 224, 250, 0.40));
         }
 
-        /* Layer 2 — vortex image sequence, centered square, screen blend hides black */
-        #vortex-canvas {
-            position: fixed;
-            top: 50%;
-            left: 50%;
-            width: max(100vw, 100vh);
-            height: max(100vw, 100vh);
-            mix-blend-mode: screen;
-            z-index: 0;
-            pointer-events: none;
-            filter: brightness(0.62);
-            animation: vortex-spin 55s linear infinite;
-            transform-origin: center center;
-        }
-
-        @keyframes vortex-spin {
-            from { transform: translate(-50%, -50%) rotate(0deg); }
-            to   { transform: translate(-50%, -50%) rotate(-360deg); }
-        }
-
-        /* Layer 3 — star particles, in front of logo and vortex */
+        /* Layer 3 — star particles, in front of logo */
         #particleCanvas {
             position: fixed;
             top: 0; left: 0;
@@ -261,9 +240,7 @@
         }
 
         /* Reduce / pause non-essential animations for users who prefer it */
-        @media (prefers-reduced-motion: reduce) {
-            #vortex-canvas { animation: none !important; }
-        }
+        @media (prefers-reduced-motion: reduce) { }
 
         /* ── Custom cursor (desktop only) ── */
         @media (hover: hover) and (pointer: fine) {
@@ -328,7 +305,6 @@
                 transition: transform 0.08s ease, background-color 0.08s ease;
             }
         }
-
     </style>
 </head>
 <body>
@@ -345,9 +321,6 @@
 
     <!-- Three.js 3D logo -->
     <canvas id="three-canvas" aria-hidden="true"></canvas>
-
-    <!-- Vortex pulse video (decorative) -->
-    <video id="vortex-canvas" src="cloud_pulse.webm" muted playsinline preload="auto" aria-hidden="true"></video>
 
     <!-- Star / meteor background (decorative) -->
     <canvas id="particleCanvas" aria-hidden="true"></canvas>
@@ -1176,42 +1149,6 @@
         animate();
     </script>
 
-    <!-- ── Vortex pulse video player ── -->
-    <script>
-        (function () {
-            const v            = document.getElementById('vortex-canvas');
-            const LOAD_DELAY   = 3000;   // ms before first play
-            const GAP_MS       = 400;    // ms gap between loops — short to avoid visible black gap
-            const FADE_IN_S    = 0.8;    // fade-in duration in seconds
-            const FADE_OUT_S   = 0.8;    // fade-out duration in seconds
-
-            v.style.opacity = '0';
-
-            setTimeout(() => v.play(), LOAD_DELAY);
-
-            v.addEventListener('ended', () => {
-                setTimeout(() => { v.currentTime = 0; v.play(); }, GAP_MS);
-            });
-
-            (function tick() {
-                requestAnimationFrame(tick);
-                const scrollDepth = window._camScrollZ || 0;
-                const hover       = window._proximity  || 0;
-                const external    = Math.max(0, (1 - hover * 3) * (1 - scrollDepth * 2.5));
-
-                let videoFade = 0;
-                if (!v.paused && !v.ended) {
-                    const t   = v.currentTime;
-                    const dur = v.duration || 13.17;
-                    if      (t < FADE_IN_S)        videoFade = t / FADE_IN_S;
-                    else if (t > dur - FADE_OUT_S) videoFade = (dur - t) / FADE_OUT_S;
-                    else                           videoFade = 1;
-                }
-
-                v.style.opacity = Math.max(0, videoFade * external);
-            })();
-        })();
-    </script>
 
     <!-- ── Custom cursor tracker ── -->
     <script>
@@ -1225,7 +1162,6 @@
 
         let mx = window.innerWidth  / 2;
         let my = window.innerHeight / 2;
-        let rx = mx, ry = my;
         let visible = false;
 
         window.addEventListener('mousemove', e => {
@@ -1257,15 +1193,10 @@
         ring.style.opacity = '0';
 
         function tick() {
-            // Dot snaps directly to cursor
-            dot.style.left = mx + 'px';
-            dot.style.top  = my + 'px';
-
-            // Ring lerps behind with smooth lag
-            rx += (mx - rx) * 0.10;
-            ry += (my - ry) * 0.10;
-            ring.style.left = rx + 'px';
-            ring.style.top  = ry + 'px';
+            dot.style.left  = mx + 'px';
+            dot.style.top   = my + 'px';
+            ring.style.left = mx + 'px';
+            ring.style.top  = my + 'px';
 
             // Pulse cursor ring when proximity to the 3D logo is high
             const prox = window._proximity || 0;
@@ -1297,6 +1228,7 @@
         tick();
     })();
     </script>
+
 
 </body>
 </html>
