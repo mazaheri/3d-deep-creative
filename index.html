@@ -91,7 +91,7 @@
             mix-blend-mode: screen;
             z-index: 0;
             pointer-events: none;
-            filter: brightness(0.4);
+            filter: brightness(0.62);
             animation: vortex-spin 55s linear infinite;
             transform-origin: center center;
         }
@@ -209,7 +209,7 @@
         .sn-w {
             display: block;
             font-family: 'Space Grotesk', system-ui, sans-serif;
-            font-size: 0.78rem;
+            font-size: 0.96rem;
             font-weight: 500;
             letter-spacing: 0.40em;
             text-transform: uppercase;
@@ -1181,9 +1181,9 @@
         (function () {
             const v            = document.getElementById('vortex-canvas');
             const LOAD_DELAY   = 3000;   // ms before first play
-            const GAP_MS       = 4500;   // ms gap between loops
-            const FADE_IN_S    = 1.0;    // fade-in duration in seconds
-            const FADE_OUT_S   = 1.5;    // fade-out duration in seconds
+            const GAP_MS       = 400;    // ms gap between loops — short to avoid visible black gap
+            const FADE_IN_S    = 0.8;    // fade-in duration in seconds
+            const FADE_OUT_S   = 0.8;    // fade-out duration in seconds
 
             v.style.opacity = '0';
 
