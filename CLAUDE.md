@@ -83,20 +83,30 @@ Before scroll: stars are erased from the logo area using `destination-out` compo
 ## Git Remote
 https://github.com/mazaheri/3d-deep-creative.git
 
+## Phase 2 — Big Bang (in progress)
+- `#galaxy-canvas` z-index 5, hidden until triggered
+- Fires at `_camScrollZ > 0.52` (mid-dive, feels like bursting to other side)
+- 3 spiral arms (320 particles each) unfurl from center outward along logarithmic paths
+- 5 concentric ring halos at radii 0.18/0.32/0.50/0.68/0.85 × maxR
+- Whole structure slowly rotates (`globalRotation += 0.0015`)
+- Bright persistent core fades over ~2s
+- After all particles fade: canvas fades out (1.5s), returns to phase 1 star field
+- Galaxy/Milky Way part intentionally removed — to be built later as separate phase
+
 ## Current State (last updated: 2026-05-06)
-- ✅ Star galaxy with black hole eat mechanic
-- ✅ Mouse interaction (push stars toward hole)
-- ✅ Resistance / escape / weakening system
+- ✅ Phase 1: Star galaxy with black hole mechanics
+- ✅ Mouse interaction + resistance/escape/weakening system
 - ✅ Scroll fly-through with logo light-up
 - ✅ Logo mask (stars hidden under logo before scroll)
 - ✅ Background cloud pulse video
+- ✅ Phase 2: Big Bang spiral burst (mid-dive trigger)
 - ✅ Pushed to GitHub
 
 ## Next — Ideas to Explore
+- Phase 2 continued: galaxy/Milky Way world after Big Bang
 - Second slide / section after fly-through
 - More GLB objects in other slides
 - Possible: shader-based cloud effect to replace video
-- Possible: post-processing (bloom, depth of field) on Three.js canvas
 
 ## How to Update This Diary
 Before starting a session: read this file.
