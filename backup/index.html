@@ -233,6 +233,72 @@
         /* Reduce / pause non-essential animations for users who prefer it */
         @media (prefers-reduced-motion: reduce) { }
 
+        /* ── Planet / section layers ── */
+        .planet-layer {
+            position: fixed; inset: 0; z-index: 20;
+            display: flex; flex-direction: column;
+            align-items: center; justify-content: center;
+            opacity: 0; pointer-events: none;
+            transition: opacity 0.8s ease;
+        }
+        .planet-layer.visible { opacity: 1; pointer-events: auto; }
+
+        .pl-eyebrow {
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 0.62rem; font-weight: 500;
+            letter-spacing: 0.38em; text-transform: uppercase;
+            color: rgba(100, 220, 255, 0.45);
+            margin: 0 0 1rem;
+        }
+        .pl-title {
+            margin: 0 0 0.6rem;
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: clamp(2rem, 5vw, 3.8rem);
+            font-weight: 700; letter-spacing: 0.04em;
+            background: linear-gradient(135deg, #a8daff 0%, #ffffff 50%, #70c8ff 100%);
+            -webkit-background-clip: text; background-clip: text;
+            -webkit-text-fill-color: transparent;
+            filter: drop-shadow(0 0 24px rgba(0,160,255,0.40));
+            text-align: center;
+        }
+        .pl-sub {
+            font-family: 'Inter', sans-serif;
+            font-size: clamp(0.85rem, 1.6vw, 1.1rem);
+            color: rgba(160, 215, 255, 0.55);
+            max-width: 480px; text-align: center; line-height: 1.7;
+            margin: 0 0 2.4rem; padding: 0 1.5rem;
+        }
+        .pl-cta {
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 0.72rem; font-weight: 600;
+            letter-spacing: 0.25em; text-transform: uppercase;
+            color: rgba(100, 200, 255, 0.70);
+            border: 1px solid rgba(80, 180, 255, 0.22);
+            padding: 0.65rem 1.8rem; border-radius: 2rem;
+            background: rgba(0, 40, 80, 0.25);
+            backdrop-filter: blur(8px);
+            cursor: pointer;
+            transition: color 0.3s, border-color 0.3s, background 0.3s;
+        }
+        .pl-cta:hover {
+            color: rgba(180, 235, 255, 0.95);
+            border-color: rgba(100, 200, 255, 0.50);
+            background: rgba(0, 60, 120, 0.35);
+        }
+
+        /* Space navigation hint */
+        #space-nav-hint {
+            position: fixed; bottom: 2rem; left: 50%;
+            transform: translateX(-50%);
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 0.60rem; letter-spacing: 0.26em; text-transform: uppercase;
+            color: rgba(100, 180, 255, 0.30);
+            z-index: 25; pointer-events: none;
+            opacity: 0; transition: opacity 0.6s ease;
+            white-space: nowrap;
+        }
+        #space-nav-hint.visible { opacity: 1; }
+
     </style>
 </head>
 <body>
@@ -440,6 +506,90 @@
             scene.add(window._starMesh);
         }
 
+        // ── Deep-space stars — round dots via ShaderMaterial (no cubes), covers travel path ──
+        {
+            const COUNT = 3500;
+            const pos = new Float32Array(COUNT * 3);
+            for (let i = 0; i < COUNT; i++) {
+                pos[i*3]   = (Math.random() - 0.5) * 300;
+                pos[i*3+1] = (Math.random() - 0.5) * 150;
+                pos[i*3+2] = Math.random() * -230 + 50;
+            }
+            const geo = new THREE.BufferGeometry();
+            geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+            scene.add(new THREE.Points(geo, new THREE.ShaderMaterial({
+                transparent: true, depthWrite: false,
+                vertexShader: `
+                    void main() {
+                        vec4 mv = modelViewMatrix * vec4(position, 1.0);
+                        gl_PointSize = max(1.0, 1.6 * (180.0 / -mv.z));
+                        gl_Position  = projectionMatrix * mv;
+                    }
+                `,
+                fragmentShader: `
+                    void main() {
+                        vec2 uv = gl_PointCoord * 2.0 - 1.0;
+                        if (length(uv) > 1.0) discard;
+                        float a = (1.0 - length(uv)) * 0.70;
+                        gl_FragColor = vec4(0.78, 0.88, 1.0, a);
+                    }
+                `
+            })));
+        }
+
+        // ── Procedural planet ──
+        const _planetVS = `
+            varying vec2 vUv; varying vec3 vNormal;
+            void main() {
+                vUv = uv;
+                vNormal = normalize(normalMatrix * normal);
+                gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+            }
+        `;
+        const _planetFS = `
+            uniform float uTime;
+            uniform vec3  uCol1; uniform vec3 uCol2; uniform vec3 uCol3;
+            varying vec2  vUv;   varying vec3 vNormal;
+            void main() {
+                float n = sin(vUv.x*11.0+uTime*0.22)*cos(vUv.y*7.0-uTime*0.17)
+                        + sin(vUv.x*5.5 -uTime*0.11+vUv.y*9.0)*0.55;
+                n = n * 0.5 + 0.5;
+                vec3 color = mix(uCol1, uCol2, n);
+                color = mix(color, uCol3, smoothstep(0.55, 0.85, n));
+                vec3 light = normalize(vec3(0.7, 0.5, 0.8));
+                float diff = dot(vNormal, light)*0.5+0.5;
+                float limb = pow(max(0.0, dot(vNormal, vec3(0.0,0.0,1.0))), 0.35);
+                color *= diff*(0.45+0.55*limb);
+                gl_FragColor = vec4(color, 1.0);
+            }
+        `;
+
+        function makePlanet(cfg) {
+            const grp = new THREE.Group();
+            grp.position.set(cfg.x, cfg.y, cfg.z);
+            const bodyMat = new THREE.ShaderMaterial({
+                vertexShader: _planetVS, fragmentShader: _planetFS,
+                uniforms: { uTime:{value:0}, uCol1:{value:new THREE.Color(cfg.c1)},
+                            uCol2:{value:new THREE.Color(cfg.c2)}, uCol3:{value:new THREE.Color(cfg.c3)} }
+            });
+            grp.add(new THREE.Mesh(new THREE.SphereGeometry(cfg.r, 56, 56), bodyMat));
+            grp.add(new THREE.Mesh(new THREE.SphereGeometry(cfg.r*1.20,32,32),
+                new THREE.MeshBasicMaterial({ color:cfg.atm, transparent:true, opacity:0.13,
+                    side:THREE.BackSide, blending:THREE.AdditiveBlending, depthWrite:false })));
+            grp.add(new THREE.Mesh(new THREE.SphereGeometry(cfg.r*1.55,24,24),
+                new THREE.MeshBasicMaterial({ color:cfg.atm, transparent:true, opacity:0.06,
+                    side:THREE.BackSide, blending:THREE.AdditiveBlending, depthWrite:false })));
+            grp.visible = false;
+            scene.add(grp);
+            return { grp, bodyMat };
+        }
+
+        // Contact Us planet — amber-gold, down-left
+        const contactPlanet = makePlanet({
+            x:-18, y:-22, z:-118, r:2.2,
+            c1:'#1a0800', c2:'#4d1e00', c3:'#cc6200', atm:0xdd5500
+        });
+
         // ── Comet system ──
         // 3 comet slots × 13 segments each = 39 GPU points total.
         // Head + tail positions computed entirely in GLSL from 3 uniforms per comet.
@@ -555,9 +705,29 @@
         let animTime   = 0;
         let _cometSlot = 0;
 
-        // ── Scroll fly-through state ──
-        let scrollTarget   = 0;   // 0 = intro  1 = fully inside
+        // ── Scroll state ──
+        // 0 = hero  1 = inside logo  2-4 = space travel  5 = loop-back snap
+        let scrollTarget   = 0;
         let scrollProgress = 0;
+        const MAX_SCROLL   = 5;
+
+        // Camera waypoints — active when scrollProgress > 1 (sp = scrollProgress - 1)
+        // Straight dive → gentle tilt to planet → smooth arc back to hero entrance.
+        const SPACE_WP = [
+            { pos: new THREE.Vector3(  0,   0,  -2.5), look: new THREE.Vector3(  0,   0, -25)  }, // sp=0 exit hero
+            { pos: new THREE.Vector3(  0,   0,  -58),  look: new THREE.Vector3(  0,   0, -95)  }, // sp=1 deep straight
+            { pos: new THREE.Vector3( -5,  -6,  -78),  look: new THREE.Vector3(-18, -22,-118)  }, // sp=2 gentle tilt to planet
+            { pos: new THREE.Vector3(-18, -14, -102),  look: new THREE.Vector3(-18, -22,-118)  }, // sp=3 arrived Contact Us
+            { pos: new THREE.Vector3(  0,   0,   3.5), look: new THREE.Vector3(  0,   0,   0)  }, // sp=4 hero entrance (return arc)
+        ];
+        const _wpCamPos = new THREE.Vector3();
+        const _wpLookAt = new THREE.Vector3();
+        const _tmpCam2  = new THREE.PerspectiveCamera();
+        const _heroLook = new THREE.Vector3(0, 0, -25); // always look forward so exit matches WP[0]
+
+        // DOM layer refs
+        const contactLayer = document.getElementById('contact-layer');
+        const spaceNavHint = document.getElementById('space-nav-hint');
 
         // Dismiss loading screen once GLB is ready
         function dismissLoader() {
@@ -627,8 +797,8 @@
         window.addEventListener('wheel', e => {
             e.preventDefault();
             if (scrollLocked) return;
-            if (e.deltaY > 0 && scrollTarget < 0.5) { scrollTarget = 1; flyLock(); }
-            else if (e.deltaY < 0 && scrollTarget > 0.5) { scrollTarget = 0; flyLock(); }
+            if (e.deltaY > 0 && scrollTarget < MAX_SCROLL) { scrollTarget++; flyLock(); }
+            else if (e.deltaY < 0 && scrollTarget > 0)     { scrollTarget--; flyLock(); }
         }, { passive: false });
 
         let _touchStartY = null;
@@ -640,8 +810,8 @@
             const dy = _touchStartY - e.changedTouches[0].clientY;
             _touchStartY = null;
             if (scrollLocked || Math.abs(dy) < 40) return;
-            if (dy > 0 && scrollTarget < 0.5) { scrollTarget = 1; flyLock(); }
-            else if (dy < 0 && scrollTarget > 0.5) { scrollTarget = 0; flyLock(); }
+            if (dy > 0 && scrollTarget < MAX_SCROLL) { scrollTarget++; flyLock(); }
+            else if (dy < 0 && scrollTarget > 0)     { scrollTarget--; flyLock(); }
         }, { passive: true });
 
         // Touch mousemove proxy — drives comet ignition and proximity on touch devices
@@ -788,58 +958,99 @@
             mouseLight.intensity = proximity * 14;
 
             // Smooth scroll progress
+            // Smooth return — after arc completes, hero logic glides camera home
+            if (scrollTarget >= MAX_SCROLL && scrollProgress >= MAX_SCROLL - 0.08) {
+                scrollProgress = 0;
+                scrollTarget   = 0;
+                // No camera.position force — hero lerp handles the landing naturally
+            }
+
             scrollProgress += (scrollTarget - scrollProgress) * 0.055;
 
-            // Portfolio card lerp + shared globals
+            const inHero = scrollProgress <= 1.0;
 
-            // Emissive — sparkles only (ring mats handled per-ring below)
-            logoMaterials.forEach(m => {
-                m.emissive.lerpColors(_idleColor, _hoverColor, proximity);
-                m.emissiveIntensity = 1.90 + proximity * 2.00;
-            });
+            // ── Camera ──
+            if (inHero) {
+                // Hero fly-through
+                const hoverZ  = 3.5 - proximity * 0.45 * (1 - scrollProgress);
+                const flyZ    = 3.5 - scrollProgress * 6.0;
+                const targetZ = hoverZ + (flyZ - hoverZ) * scrollProgress;
+                camera.position.x += (0 - camera.position.x) * 0.10;
+                camera.position.y += (0 - camera.position.y) * 0.10;
+                camera.position.z += (targetZ - camera.position.z) * 0.06;
+                _tmpCam2.position.copy(camera.position);
+                _tmpCam2.up.set(0, 1, 0);
+                _tmpCam2.lookAt(_heroLook);
+                camera.quaternion.slerp(_tmpCam2.quaternion, 0.10);
+                contactPlanet.grp.visible = false;
+            } else {
+                // Space travel — camera follows waypoints
+                contactPlanet.grp.visible = true;
+                const sp  = scrollProgress - 1.0;
+                const i0  = Math.min(Math.floor(sp), SPACE_WP.length - 2);
+                const raw = sp - i0;
+                const et  = raw * raw * (3 - 2 * raw); // smoothstep
+                _wpCamPos.lerpVectors(SPACE_WP[i0].pos, SPACE_WP[i0 + 1].pos, et);
+                _wpLookAt.lerpVectors(SPACE_WP[i0].look, SPACE_WP[i0 + 1].look, et);
+                camera.position.lerp(_wpCamPos, 0.055);
+                _tmpCam2.position.copy(camera.position);
+                _tmpCam2.up.set(0, 1, 0);
+                _tmpCam2.lookAt(_wpLookAt);
+                camera.quaternion.slerp(_tmpCam2.quaternion, 0.028);
+            }
 
-            // Camera: hover zoom when idle, fly-through when scrolling
-            const hoverZ  = 3.5 - proximity * 0.45 * (1 - scrollProgress);
-            const flyZ    = 3.5 - scrollProgress * 6.0;   // travel 6 world units forward
-            const targetZ = hoverZ + (flyZ - hoverZ) * scrollProgress;
-            camera.position.z += (targetZ - camera.position.z) * 0.06;
-            // Share actual camera depth with particle canvas — star zoom stays in lock-step
-            window._camScrollZ    = Math.max(0, Math.min(1, (3.5 - camera.position.z) / 6.0));
+            // Share camera depth with particle canvas (hero only — 0..1 range)
+            window._camScrollZ    = Math.max(0, Math.min(1, (3.5 - Math.min(camera.position.z, 3.5)) / 6.0));
             window._proximity     = proximity;
             window._scrollProgress = scrollProgress;
 
-            // Animation parameters blend with proximity
-            const amp  = IDLE_AMP  + (PULSE_AMP  - IDLE_AMP)  * proximity;
-            const freq = IDLE_FREQ + (PULSE_FREQ - IDLE_FREQ) * proximity;
-            const stag = IDLE_STAG + (PULSE_STAG - IDLE_STAG) * proximity;
+            // ── Logo animation — hero only ──
+            if (inHero) {
+                logoMaterials.forEach(m => {
+                    m.emissive.lerpColors(_idleColor, _hoverColor, proximity);
+                    m.emissiveIntensity = 1.90 + proximity * 2.00;
+                });
 
-            // Wave amplitude fades to zero as scroll starts (rings spread instead)
-            const waveAmp = amp * Math.max(0, 1 - scrollProgress * 4);
+                const amp  = IDLE_AMP  + (PULSE_AMP  - IDLE_AMP)  * proximity;
+                const freq = IDLE_FREQ + (PULSE_FREQ - IDLE_FREQ) * proximity;
+                const stag = IDLE_STAG + (PULSE_STAG - IDLE_STAG) * proximity;
+                const waveAmp = amp * Math.max(0, 1 - scrollProgress * 4);
 
-            rings.forEach((r, idx) => {
-                // Z: idle wave → scroll spread (front ring stays, each deeper ring steps back)
-                const waveZ   = r.baseZ + waveAmp * Math.sin(freq * 2 * Math.PI * animTime - idx * stag);
-                const spreadZ = r.baseZ - idx * 0.65 * scrollProgress;
-                r.mesh.position.z = waveZ * (1 - scrollProgress) + spreadZ * scrollProgress;
+                rings.forEach((r, idx) => {
+                    const waveZ   = r.baseZ + waveAmp * Math.sin(freq * 2 * Math.PI * animTime - idx * stag);
+                    const spreadZ = r.baseZ - idx * 0.65 * scrollProgress;
+                    r.mesh.position.z = waveZ * (1 - scrollProgress) + spreadZ * scrollProgress;
+                    r.mesh.getWorldPosition(_ringWorldPos);
+                    const ahead = camera.position.z - _ringWorldPos.z;
+                    const ringOpacity = Math.max(0, Math.min(1, ahead / 0.30));
+                    r.mat.opacity = ringOpacity;
+                    r.mat.emissive.lerpColors(_idleColor, _hoverColor, proximity);
+                    r.mat.emissiveIntensity = (1.90 + proximity * 2.00) * ringOpacity;
+                });
+            }
 
-                // Fade each ring as the camera passes through it
-                r.mesh.getWorldPosition(_ringWorldPos);
-                const ahead = camera.position.z - _ringWorldPos.z;   // > 0 = ring ahead of cam
-                const ringOpacity = Math.max(0, Math.min(1, ahead / 0.30));
-                r.mat.opacity = ringOpacity;
+            // ── Contact Us planet visibility ──
+            const sp2 = scrollProgress - 1.0;
+            const contactVisible = sp2 > 1.7 && sp2 < 3.2;
+            contactLayer.classList.toggle('visible', contactVisible);
+            contactLayer.setAttribute('aria-hidden', String(!contactVisible));
+            spaceNavHint.classList.toggle('visible', scrollProgress > 1.05 && !contactVisible);
 
-                // Emissive — same colour logic as logoMaterials
-                r.mat.emissive.lerpColors(_idleColor, _hoverColor, proximity);
-                r.mat.emissiveIntensity = (1.90 + proximity * 2.00) * ringOpacity;
-            });
+            // ── Planet rotation + shader ──
+            if (!inHero) {
+                contactPlanet.grp.rotation.y += 0.0015;
+                contactPlanet.bodyMat.uniforms.uTime.value = animTime;
+            }
 
-            // Update hint text based on scroll state
-            const scrollState = scrollTarget > 0.5 ? 1 : 0;
-            if (scrollState !== lastScrollState) {
-                lastScrollState = scrollState;
-                if (hintEl) hintEl.textContent = scrollState === 1
-                    ? (isTouch ? 'swipe down to return' : 'scroll down to return')
-                    : (isTouch ? 'tap · swipe up to explore' : 'hover · scroll to explore');
+            // ── Hint text ──
+            if (scrollTarget !== lastScrollState) {
+                lastScrollState = scrollTarget;
+                const hints = [
+                    isTouch ? 'tap · swipe up to explore' : 'hover · scroll to explore',
+                    isTouch ? 'swipe up to continue'      : 'scroll to continue',
+                    '', '', '', '',
+                ];
+                if (hintEl) hintEl.textContent = hints[Math.min(scrollTarget, hints.length - 1)] || '';
             }
 
             // Update GPU star uniforms + slow rotation
@@ -856,6 +1067,17 @@
         animate();
     </script>
 
+
+    <!-- ── Space navigation hint ── -->
+    <div id="space-nav-hint">scroll to continue the journey</div>
+
+    <!-- ── Contact Us planet layer ── -->
+    <div id="contact-layer" class="planet-layer" aria-hidden="true">
+        <p class="pl-eyebrow" style="color:rgba(255,160,60,0.50)">Let's Talk</p>
+        <h2 class="pl-title" style="background:linear-gradient(135deg,#ff9a3c 0%,#ffffff 50%,#ffb86c 100%);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;filter:drop-shadow(0 0 24px rgba(220,90,0,0.45))">Contact Us</h2>
+        <p class="pl-sub" style="color:rgba(255,180,100,0.55)">Ready to build something extraordinary? Let's talk — we craft digital experiences that leave a mark across space and time.</p>
+        <button class="pl-cta" style="color:rgba(255,160,60,0.75);border-color:rgba(200,100,0,0.28);background:rgba(80,20,0,0.28)">Start a Project</button>
+    </div>
 
     <!-- ── Studio name glow tracker ── -->
     <script>
