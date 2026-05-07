@@ -286,18 +286,45 @@
             background: rgba(0, 60, 120, 0.35);
         }
 
-        /* Space navigation hint */
+        /* Journey progress dots + hint text */
         #space-nav-hint {
             position: fixed; bottom: 2rem; left: 50%;
             transform: translateX(-50%);
+            display: flex; flex-direction: column; align-items: center; gap: 0.55rem;
+            z-index: 25; pointer-events: none;
+            opacity: 0; transition: opacity 0.6s ease;
+        }
+        #space-nav-hint.visible { opacity: 1; }
+        #space-nav-text {
             font-family: 'Space Grotesk', sans-serif;
             font-size: 0.60rem; letter-spacing: 0.26em; text-transform: uppercase;
             color: rgba(100, 180, 255, 0.30);
-            z-index: 25; pointer-events: none;
-            opacity: 0; transition: opacity 0.6s ease;
             white-space: nowrap;
         }
-        #space-nav-hint.visible { opacity: 1; }
+        .jd-node {
+            width: 5px; height: 5px; border-radius: 50%;
+            background: rgba(100, 180, 255, 0.12);
+            transition: background 0.5s ease, box-shadow 0.5s ease, transform 0.4s ease;
+            flex-shrink: 0;
+        }
+        .jd-node.visited { background: rgba(100, 180, 255, 0.32); }
+        .jd-node.active {
+            background: rgba(120, 210, 255, 0.90);
+            box-shadow: 0 0 5px rgba(100, 200, 255, 0.80), 0 0 14px rgba(80, 160, 255, 0.35);
+            transform: scale(1.55);
+            animation: jd-pulse 1.8s ease-in-out infinite;
+        }
+        @keyframes jd-pulse {
+            0%, 100% { box-shadow: 0 0 5px rgba(100,200,255,0.80), 0 0 14px rgba(80,160,255,0.35); }
+            50%       { box-shadow: 0 0 8px rgba(100,200,255,1.00), 0 0 22px rgba(80,160,255,0.60); }
+        }
+        .jd-line {
+            width: 22px; height: 1px;
+            background: rgba(100, 180, 255, 0.08);
+            transition: background 0.5s ease; flex-shrink: 0;
+        }
+        .jd-line.filled { background: rgba(100, 180, 255, 0.28); }
+
 
     </style>
 </head>
@@ -710,16 +737,25 @@
         let scrollTarget   = 0;
         let scrollProgress = 0;
         const MAX_SCROLL   = 5;
+        let _returning    = false; // true after snap — drives reverse fly-through reveal
+        let _virtualFlyZ  = -2.5; // virtual camera Z for reveal: sweeps -2.5 → 3.5
+        let _returnSP     = 0;    // 1→0: mirrors scrollProgress during reveal (spread→base)
 
         // Camera waypoints — active when scrollProgress > 1 (sp = scrollProgress - 1)
-        // Straight dive → gentle tilt to planet → smooth arc back to hero entrance.
+        // Straight dive → tilt to planet → LEFT-bank bezier arc back to hero (one scroll)
         const SPACE_WP = [
             { pos: new THREE.Vector3(  0,   0,  -2.5), look: new THREE.Vector3(  0,   0, -25)  }, // sp=0 exit hero
             { pos: new THREE.Vector3(  0,   0,  -58),  look: new THREE.Vector3(  0,   0, -95)  }, // sp=1 deep straight
             { pos: new THREE.Vector3( -5,  -6,  -78),  look: new THREE.Vector3(-18, -22,-118)  }, // sp=2 gentle tilt to planet
             { pos: new THREE.Vector3(-18, -14, -102),  look: new THREE.Vector3(-18, -22,-118)  }, // sp=3 arrived Contact Us
-            { pos: new THREE.Vector3(  0,   0,   3.5), look: new THREE.Vector3(  0,   0,   0)  }, // sp=4 hero entrance (return arc)
+            { pos: new THREE.Vector3(  0,   0,   3.5), look: new THREE.Vector3(  0,   0,   0)  }, // sp=4 hero entrance
         ];
+        // Cubic Bézier control points for the return arc (WP[3] → WP[4])
+        // ctrl1 = departure: hard left + rising, still deep — like a plane banking out of a valley
+        // ctrl2 = pre-arrival: still left, above logo level, now at positive Z — coming in from front-left
+        // Camera always looks at (0,0,0) during the arc so the logo grows from a dot to full screen
+        const _retCtrl1 = new THREE.Vector3(-55, 28, -95);
+        const _retCtrl2 = new THREE.Vector3(-35, 18,  30);
         const _wpCamPos = new THREE.Vector3();
         const _wpLookAt = new THREE.Vector3();
         const _tmpCam2  = new THREE.PerspectiveCamera();
@@ -728,6 +764,9 @@
         // DOM layer refs
         const contactLayer = document.getElementById('contact-layer');
         const spaceNavHint = document.getElementById('space-nav-hint');
+        const jdNodes      = [0,1,2,3].map(i => document.getElementById('jd'  + i));
+        const jdLines      = [0,1,2]  .map(i => document.getElementById('jdl' + i));
+        let   _lastJdStage = -1;
 
         // Dismiss loading screen once GLB is ready
         function dismissLoader() {
@@ -797,6 +836,8 @@
         window.addEventListener('wheel', e => {
             e.preventDefault();
             if (scrollLocked) return;
+            // Block forward scroll while logo is rebuilding after return — user must see the logo first
+            if (_returning && e.deltaY > 0) return;
             if (e.deltaY > 0 && scrollTarget < MAX_SCROLL) { scrollTarget++; flyLock(); }
             else if (e.deltaY < 0 && scrollTarget > 0)     { scrollTarget--; flyLock(); }
         }, { passive: false });
@@ -810,6 +851,7 @@
             const dy = _touchStartY - e.changedTouches[0].clientY;
             _touchStartY = null;
             if (scrollLocked || Math.abs(dy) < 40) return;
+            if (_returning && dy > 0) return; // same gate as wheel
             if (dy > 0 && scrollTarget < MAX_SCROLL) { scrollTarget++; flyLock(); }
             else if (dy < 0 && scrollTarget > 0)     { scrollTarget--; flyLock(); }
         }, { passive: true });
@@ -888,7 +930,7 @@
         function animate() {
             if (!_threeRunning) return;
             requestAnimationFrame(animate);
-            const dt = clock.getDelta();
+            const dt = Math.min(clock.getDelta(), 0.05); // cap at 50ms — prevents huge jumps after app switch
             animTime += dt;
 
             // Scroll boosts proximity so logo lights up before fly-through begins
@@ -960,9 +1002,11 @@
             // Smooth scroll progress
             // Smooth return — after arc completes, hero logic glides camera home
             if (scrollTarget >= MAX_SCROLL && scrollProgress >= MAX_SCROLL - 0.08) {
-                scrollProgress = 0;
-                scrollTarget   = 0;
-                // No camera.position force — hero lerp handles the landing naturally
+                scrollProgress  = 0;
+                scrollTarget    = 0;
+                _returning   = true;
+                _virtualFlyZ = -2.5;  // start virtual camera at the fly-through origin
+                _returnSP    = 1.0;   // rings start fully spread (scroll=1 state)
             }
 
             scrollProgress += (scrollTarget - scrollProgress) * 0.055;
@@ -986,17 +1030,36 @@
             } else {
                 // Space travel — camera follows waypoints
                 contactPlanet.grp.visible = true;
-                const sp  = scrollProgress - 1.0;
-                const i0  = Math.min(Math.floor(sp), SPACE_WP.length - 2);
-                const raw = sp - i0;
-                const et  = raw * raw * (3 - 2 * raw); // smoothstep
-                _wpCamPos.lerpVectors(SPACE_WP[i0].pos, SPACE_WP[i0 + 1].pos, et);
-                _wpLookAt.lerpVectors(SPACE_WP[i0].look, SPACE_WP[i0 + 1].look, et);
+                const sp      = scrollProgress - 1.0;
+                const i0      = Math.min(Math.floor(sp), SPACE_WP.length - 2);
+                const raw     = sp - i0;
+                const et      = raw * raw * (3 - 2 * raw); // smoothstep
+                const isReturn = i0 === SPACE_WP.length - 2; // last segment = return arc
+
+                if (isReturn) {
+                    // Cubic Bézier arc: departs left+up from planet, sweeps wide left through space
+                    const p0 = SPACE_WP[i0].pos, p3 = SPACE_WP[i0+1].pos;
+                    const u  = 1 - et;
+                    _wpCamPos.set(
+                        u*u*u*p0.x + 3*u*u*et*_retCtrl1.x + 3*u*et*et*_retCtrl2.x + et*et*et*p3.x,
+                        u*u*u*p0.y + 3*u*u*et*_retCtrl1.y + 3*u*et*et*_retCtrl2.y + et*et*et*p3.y,
+                        u*u*u*p0.z + 3*u*u*et*_retCtrl1.z + 3*u*et*et*_retCtrl2.z + et*et*et*p3.z
+                    );
+                    _wpLookAt.set(0, 0, 0);
+                    // Hide logo during the arc — it reveals ring-by-ring after landing
+                    rings.forEach(r => { r.mesh.position.z = r.baseZ; r.mat.opacity = 0; });
+                    logoMaterials.forEach(m => { m.emissiveIntensity = 0; });
+                } else {
+                    _wpCamPos.lerpVectors(SPACE_WP[i0].pos,  SPACE_WP[i0+1].pos,  et);
+                    _wpLookAt.lerpVectors(SPACE_WP[i0].look, SPACE_WP[i0+1].look, et);
+                }
+
                 camera.position.lerp(_wpCamPos, 0.055);
                 _tmpCam2.position.copy(camera.position);
                 _tmpCam2.up.set(0, 1, 0);
                 _tmpCam2.lookAt(_wpLookAt);
-                camera.quaternion.slerp(_tmpCam2.quaternion, 0.028);
+                const rotSpeed = isReturn ? 0.045 : 0.028;
+                camera.quaternion.slerp(_tmpCam2.quaternion, rotSpeed);
             }
 
             // Share camera depth with particle canvas (hero only — 0..1 range)
@@ -1008,7 +1071,9 @@
             if (inHero) {
                 logoMaterials.forEach(m => {
                     m.emissive.lerpColors(_idleColor, _hoverColor, proximity);
-                    m.emissiveIntensity = 1.90 + proximity * 2.00;
+                    m.emissiveIntensity = _returning
+                        ? (1.90 + proximity * 2.00) * Math.min(1, _returnRevealT * 1.5)
+                        : 1.90 + proximity * 2.00;
                 });
 
                 const amp  = IDLE_AMP  + (PULSE_AMP  - IDLE_AMP)  * proximity;
@@ -1016,25 +1081,58 @@
                 const stag = IDLE_STAG + (PULSE_STAG - IDLE_STAG) * proximity;
                 const waveAmp = amp * Math.max(0, 1 - scrollProgress * 4);
 
-                rings.forEach((r, idx) => {
-                    const waveZ   = r.baseZ + waveAmp * Math.sin(freq * 2 * Math.PI * animTime - idx * stag);
-                    const spreadZ = r.baseZ - idx * 0.65 * scrollProgress;
-                    r.mesh.position.z = waveZ * (1 - scrollProgress) + spreadZ * scrollProgress;
-                    r.mesh.getWorldPosition(_ringWorldPos);
-                    const ahead = camera.position.z - _ringWorldPos.z;
-                    const ringOpacity = Math.max(0, Math.min(1, ahead / 0.30));
-                    r.mat.opacity = ringOpacity;
-                    r.mat.emissive.lerpColors(_idleColor, _hoverColor, proximity);
-                    r.mat.emissiveIntensity = (1.90 + proximity * 2.00) * ringOpacity;
-                });
+                if (_returning) {
+                    // Reverse fly-through: virtual camera sweeps Z=-2.5 → 3.5 (mirror of scroll-out)
+                    // Rings start in spread state, compress to base; each fades IN as virtual cam passes it
+                    _virtualFlyZ = Math.min(3.5, _virtualFlyZ + dt * 4.2); // ~1.4s total sweep
+                    _returnSP    = Math.max(0, (3.5 - _virtualFlyZ) / 6.0);// 1→0 as flyZ reaches 3.5
+                    rings.forEach((r, idx) => {
+                        const waveZ   = r.baseZ + waveAmp * Math.sin(freq * 2 * Math.PI * animTime - idx * stag);
+                        const spreadZ = r.baseZ - idx * 0.65 * _returnSP;
+                        r.mesh.position.z = waveZ * (1 - _returnSP) + spreadZ * _returnSP;
+                        r.mesh.getWorldPosition(_ringWorldPos);
+                        // Ring fades in when virtual camera passes it — same 0.30-unit window as scroll-out
+                        const virtualAhead = _virtualFlyZ - _ringWorldPos.z;
+                        const ringOpacity  = Math.max(0, Math.min(1, virtualAhead / 0.30));
+                        r.mat.opacity = ringOpacity;
+                        r.mat.emissive.lerpColors(_idleColor, _hoverColor, proximity);
+                        r.mat.emissiveIntensity = (1.90 + proximity * 2.00) * ringOpacity;
+                    });
+                    if (_virtualFlyZ >= 3.5) _returning = false;
+                } else {
+                    // Normal hero ring animation
+                    rings.forEach((r, idx) => {
+                        const waveZ   = r.baseZ + waveAmp * Math.sin(freq * 2 * Math.PI * animTime - idx * stag);
+                        const spreadZ = r.baseZ - idx * 0.65 * scrollProgress;
+                        r.mesh.position.z = waveZ * (1 - scrollProgress) + spreadZ * scrollProgress;
+                        r.mesh.getWorldPosition(_ringWorldPos);
+                        const ahead = camera.position.z - _ringWorldPos.z;
+                        const ringOpacity = Math.max(0, Math.min(1, ahead / 0.30));
+                        r.mat.opacity = ringOpacity;
+                        r.mat.emissive.lerpColors(_idleColor, _hoverColor, proximity);
+                        r.mat.emissiveIntensity = (1.90 + proximity * 2.00) * ringOpacity;
+                    });
+                }
             }
 
             // ── Contact Us planet visibility ──
             const sp2 = scrollProgress - 1.0;
-            const contactVisible = sp2 > 1.7 && sp2 < 3.2;
+            const contactVisible = sp2 > 1.7 && sp2 < 3.5;
             contactLayer.classList.toggle('visible', contactVisible);
             contactLayer.setAttribute('aria-hidden', String(!contactVisible));
             spaceNavHint.classList.toggle('visible', scrollProgress > 1.05 && !contactVisible);
+
+            // ── Journey dots ──
+            // Stage 0=HOME(start) 1=SPACE 2=CONTACT 3=HOME(return)
+            const jdStage = scrollProgress < 2 ? 1 : scrollProgress < 4 ? 2 : 3;
+            if (jdStage !== _lastJdStage) {
+                _lastJdStage = jdStage;
+                jdNodes.forEach((n, i) => {
+                    n.classList.toggle('active',  i === jdStage);
+                    n.classList.toggle('visited', i < jdStage);
+                });
+                jdLines.forEach((l, i) => l.classList.toggle('filled', i < jdStage));
+            }
 
             // ── Planet rotation + shader ──
             if (!inHero) {
@@ -1068,8 +1166,17 @@
     </script>
 
 
-    <!-- ── Space navigation hint ── -->
-    <div id="space-nav-hint">scroll to continue the journey</div>
+    <!-- ── Journey progress dots ── -->
+    <div id="space-nav-hint">
+        <span id="space-nav-text">scroll to continue the journey</span>
+        <div class="jd-node" id="jd0"></div>
+        <div class="jd-line" id="jdl0"></div>
+        <div class="jd-node" id="jd1"></div>
+        <div class="jd-line" id="jdl1"></div>
+        <div class="jd-node" id="jd2"></div>
+        <div class="jd-line" id="jdl2"></div>
+        <div class="jd-node" id="jd3"></div>
+    </div>
 
     <!-- ── Contact Us planet layer ── -->
     <div id="contact-layer" class="planet-layer" aria-hidden="true">
