@@ -1050,10 +1050,13 @@
 
         // Planets placed in completely different DIRECTIONS — never visible together
         const planets = [
-            makePlanet({ x: 38,  y: 10,  z: -80, r: 2.5, ring: true, ringTilt:  0.40,
+            makePlanet({ x:  38,  y:  10, z:  -80, r: 2.5, ring: true,  ringTilt:  0.40,
                 c1: '#020c1e', c2: '#0a2860', c3: '#1a6aee', atm: 0x1155ff, ring: 0x2266ee }),
-            makePlanet({ x: -42, y: -12, z: -80, r: 2.8, ring: true, ringTilt: -0.30,
+            makePlanet({ x: -42,  y: -12, z:  -80, r: 2.8, ring: true,  ringTilt: -0.30,
                 c1: '#0d0420', c2: '#2a0858', c3: '#8822ee', atm: 0x6622ff, ring: 0x8833cc }),
+            // Planet 3 — Contact Us — deep down-left, amber-gold
+            makePlanet({ x: -55,  y: -28, z: -125, r: 2.2, ring: false, ringTilt:  0.00,
+                c1: '#1a0800', c2: '#4d1e00', c3: '#cc6200', atm: 0xdd5500, ring: 0xcc7700 }),
         ];
 
         // Camera waypoints — sp = scrollProgress - 1  (0 = hero exit … 4 = return)
@@ -1064,6 +1067,9 @@
             { pos: new THREE.Vector3( 15,   4,  -52),  look: new THREE.Vector3( 38, 10, -78) }, // sp=2 planet 1   — swing right
             { pos: new THREE.Vector3(-18,  -5,  -52),  look: new THREE.Vector3(-42,-12, -78) }, // sp=3 planet 2   — swing left
             { pos: new THREE.Vector3( 10,   6,  -48),  look: new THREE.Vector3( 38, 10, -78) }, // sp=4 return     — back to planet 1
+            { pos: new THREE.Vector3(-12,  -4,  -65),  look: new THREE.Vector3(-55,-28,-125) }, // sp=5 planet 3   — swing deep down-left
+            { pos: new THREE.Vector3(-38, -16, -110),  look: new THREE.Vector3(-55,-28,-125) }, // sp=6 planet 3   — arrived, Contact Us
+            { pos: new THREE.Vector3(  0,   0,  -2.5), look: new THREE.Vector3(  0,  0,  -25) }, // sp=7 loop       — identical to WP[0], seamless reset
         ];
         const _wpCamPos  = new THREE.Vector3();
         const _wpLookAt  = new THREE.Vector3();
@@ -1077,8 +1083,9 @@
         // DOM layer refs
         const planet1Layer = document.getElementById('planet-1-layer');
         const planet2Layer = document.getElementById('planet-2-layer');
+        const planet3Layer = document.getElementById('planet-3-layer');
         const spaceNavHint = document.getElementById('space-nav-hint');
-        const MAX_SCROLL = 5; // hero(0→1) + deep dive + planet1 + planet2 + return
+        const MAX_SCROLL = 8; // hero(0→1) + deep dive + p1 + p2 + return + approach p3 + arrive p3 + loop-back
 
         let scrollLocked = false;
 
@@ -1222,6 +1229,12 @@
             // Smooth scroll progress
             scrollProgress += (scrollTarget - scrollProgress) * 0.055;
 
+            // Seamless loop — WP[7] = WP[0]; snap when close to end
+            if (scrollTarget >= MAX_SCROLL && scrollProgress >= MAX_SCROLL - 0.12) {
+                scrollProgress = 1.0;
+                scrollTarget   = 1.0;
+            }
+
             // ── Camera ──
             const inHero = scrollProgress < 1.15;
 
@@ -1264,15 +1277,18 @@
             window._scrollProgress = scrollProgress;
 
             // ── Planet DOM layers ──
-            // sp = scrollProgress - 1  (planet1 at sp=2, planet2 at sp=3, return at sp=4)
+            // sp = scrollProgress - 1  (p1@sp=2, p2@sp=3, return@sp=4, p3@sp=5-6)
             const sp2 = scrollProgress - 1.0;
             const p1v = (sp2 > 1.72 && sp2 < 2.38) || (sp2 > 3.72 && sp2 < 4.38); // arrive + return
             const p2v =  sp2 > 2.72 && sp2 < 3.38;
+            const p3v =  sp2 > 4.88 && sp2 < 6.20; // approaching + arrived at Contact Us
             planet1Layer.classList.toggle('visible', p1v);
             planet2Layer.classList.toggle('visible', p2v);
+            planet3Layer.classList.toggle('visible', p3v);
             planet1Layer.setAttribute('aria-hidden', String(!p1v));
             planet2Layer.setAttribute('aria-hidden', String(!p2v));
-            spaceNavHint.classList.toggle('visible', scrollProgress > 1.05 && !p1v && !p2v);
+            planet3Layer.setAttribute('aria-hidden', String(!p3v));
+            spaceNavHint.classList.toggle('visible', scrollProgress > 1.05 && !p1v && !p2v && !p3v);
 
             // ── Planet rotation + shader time ──
             planets.forEach((p, i) => {
@@ -1319,10 +1335,13 @@
                 const hints = [
                     isTouch ? 'tap · swipe up to explore' : 'hover · scroll to explore',
                     isTouch ? 'swipe up to enter deep space' : 'scroll to enter deep space',
-                    '', // deep dive — no hint, let the stars speak
+                    '', // deep dive — let the stars speak
                     '', // planet 1 arrival
                     '', // planet 2 arrival
-                    '', // return
+                    '', // return toward planet 1
+                    '', // approach planet 3
+                    '', // arrived at planet 3 — Contact Us
+                    '', // cinematic loop-back
                 ];
                 if (hintEl) hintEl.textContent = hints[scrollTarget] || '';
             }
@@ -1353,6 +1372,14 @@
         <h2 class="pl-title">Services</h2>
         <p class="pl-sub">3D production, brand identity, interactive web, motion systems — everything to bring your vision into three dimensions.</p>
         <button class="pl-cta">View Services</button>
+    </div>
+
+    <!-- ── Planet 3 — Contact Us ── -->
+    <div id="planet-3-layer" class="planet-layer" aria-hidden="true" style="--accent: 204,98,0;">
+        <p class="pl-eyebrow" style="color:rgba(255,160,60,0.50)">Planet 03</p>
+        <h2 class="pl-title" style="background:linear-gradient(135deg,#ff9a3c 0%,#ffffff 50%,#ffb86c 100%);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;filter:drop-shadow(0 0 24px rgba(220,90,0,0.45))">Contact Us</h2>
+        <p class="pl-sub" style="color:rgba(255,180,100,0.55)">Ready to build something extraordinary? Let's talk — we craft digital experiences that leave a mark across space and time.</p>
+        <button class="pl-cta" style="color:rgba(255,160,60,0.75);border-color:rgba(200,100,0,0.28);background:rgba(80,20,0,0.28)">Start a Project</button>
     </div>
 
     <!-- ── Studio name glow tracker ── -->

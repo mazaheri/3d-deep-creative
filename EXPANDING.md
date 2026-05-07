@@ -13,14 +13,28 @@ A gamified 3D space website. Each scroll takes the user to a planet. Each planet
 
 ---
 
+## Workflow Rule — Index Is Always Latest
+
+**`index.html` is always the current production version.** When a fundamental approach changes (new rendering method, new architecture), the old index becomes `index-vN.html` and the new version takes over as `index.html`. This is not always a merge — sometimes it's a full rebuild. Both paths are valid:
+
+- **Incremental**: add features directly to `index.html`, backup + push at each milestone
+- **Rebuild**: build a new version in a working file, validate it, then promote it to `index.html` and archive the previous as `index-vN.html`
+
+Before every risky change: copy `index.html` → `backup/index.html`. Push to GitHub after each milestone.
+
+`space-test.html` is the planet/travel prototype. When it's ready, it either gets merged into `index.html` or replaces it — whichever makes more sense at that point.
+
+---
+
 ## Current Status (2026-05-07)
 
 ### What exists today
 
 | File | Purpose | State |
 |------|---------|-------|
-| `index.html` | Hero-only site (logo, black hole, fly-through) | ✅ Production-ready |
-| `space-test.html` | Experimental space concept prototype | 🔧 In progress |
+| `index.html` | Main — GPU star field, GLSL comets, 3D logo, fly-through | ✅ Production-ready |
+| `index-v1.html` | Archived — Canvas 2D black hole, vortex stars, phase 2 big bang | 🗄️ Archive |
+| `space-test.html` | Prototype — 3 planets (Our Work, Services, Contact Us), 8 waypoints, seamless loop | 🔧 In progress |
 | `EXPANDING.md` | This guide | ✅ |
 
 ### space-test.html — compliance check
@@ -334,11 +348,11 @@ Planet GLBs and videos load only when 1 section away. The proximity system is th
 | RAF loops | ≤ 3 | ✅ 3 | ✅ 3 |
 | 60fps cap | required | ❌ pending | ❌ pending |
 | Canvas 2D particles | ≤ 1000 | ✅ 1000 | ✅ 1000 |
-| GPU stars | THREE.Points | ❌ not yet | ✅ 9k points |
+| GPU stars | THREE.Points | ✅ 6k points | ✅ 9k points |
 | Proximity loading | required | n/a | ❌ not built |
 | dispose() on removal | required | n/a | ❌ not built |
 | Initial load | < 1.5MB | ✅ ~1MB | ✅ ~1MB |
-| Chrome GPU CPU | < 15% | ⚠️ ~27% | measuring |
+| Chrome GPU CPU | < 15% | ⚠️ measuring | ⚠️ measuring |
 
 ---
 
@@ -371,8 +385,9 @@ Arrival effects, travel trail particles, transitions.
 
 ```
 deep-creative/
-  index.html              — hero site (production)
-  space-test.html         — space concept prototype
+  index.html              — ALWAYS the current production version
+  index-v1.html           — archived: Canvas 2D black hole, vortex stars, big bang
+  space-test.html         — planet/travel prototype (3 planets, 8 waypoints, seamless loop)
   logo_3d_optimized.glb   — hero logo (eager)
   cloud_pulse.webm        — background video
   assets/
@@ -384,8 +399,10 @@ deep-creative/
   EXPANDING.md            — this file
 ```
 
-Split `space-test.html` into modules when it exceeds ~1500 lines:
-- `js/particles.js` — Canvas 2D black hole
+When `space-test.html` is ready to become production, either merge its systems into `index.html` or promote it directly — whichever is cleaner at that point. Archive the old `index.html` as `index-v2.html`.
+
+If the codebase grows large enough to warrant splitting:
+- `js/particles.js` — Canvas 2D hero effects
 - `js/scene.js` — Three.js scene, logo, camera
 - `js/scroll.js` — scroll/navigation/waypoints
 - `js/stars.js` — GPU star field
@@ -393,4 +410,4 @@ Split `space-test.html` into modules when it exceeds ~1500 lines:
 
 ---
 
-*Last updated: 2026-05-07*
+*Last updated: 2026-05-07 — reflects GPU star rebuild (v1→current index), space-test 3-planet prototype*
