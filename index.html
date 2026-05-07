@@ -242,107 +242,6 @@
         /* Reduce / pause non-essential animations for users who prefer it */
         @media (prefers-reduced-motion: reduce) { }
 
-        /* ── Portfolio scene ── */
-        #portfolio-scene {
-            position: fixed; inset: 0; z-index: 15;
-            opacity: 0; pointer-events: none;
-            transition: opacity 0.9s ease; overflow: hidden;
-        }
-        #portfolio-scene.visible { opacity: 1; pointer-events: auto; }
-        #portfolio-scene::before {
-            content: ''; position: absolute; inset: 0; pointer-events: none;
-            background:
-                radial-gradient(ellipse 70% 55% at 15% 50%, rgba(70,15,130,0.18) 0%, transparent 70%),
-                radial-gradient(ellipse 55% 70% at 85% 40%, rgba(0,50,150,0.14) 0%, transparent 70%),
-                radial-gradient(ellipse 100% 50% at 50% 100%, rgba(0,4,18,0.70) 0%, transparent 55%);
-        }
-
-        /* Three.js canvas fills the scene */
-        #portfolio-canvas {
-            position: absolute; inset: 0; z-index: 1;
-            width: 100%; height: 100%;
-        }
-
-        /* Header */
-        .pt-header {
-            position: absolute; top: 2.4rem; left: 50%;
-            transform: translateX(-50%);
-            text-align: center; z-index: 3; pointer-events: none; white-space: nowrap;
-            opacity: 0; transition: opacity 0.7s ease 0.4s;
-        }
-        #portfolio-scene.visible .pt-header { opacity: 1; }
-        .pt-heading {
-            margin: 0; font-family: 'Space Grotesk', sans-serif;
-            font-size: clamp(1.3rem, 2.8vw, 2.0rem);
-            font-weight: 600; letter-spacing: 0.20em; text-transform: uppercase;
-            background: linear-gradient(135deg, #a8daff 0%, #ffffff 50%, #70baff 100%);
-            -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
-            filter: drop-shadow(0 0 16px rgba(0,160,255,0.50));
-        }
-        .pt-sub {
-            margin: 0.25rem 0 0; font-family: 'Space Grotesk', sans-serif;
-            font-size: 0.65rem; letter-spacing: 0.38em; text-transform: uppercase;
-            color: rgba(90,170,255,0.48);
-        }
-
-        /* Project info — tag + title below planet */
-        .pt-info {
-            position: absolute; bottom: 5.8rem; left: 50%;
-            transform: translateX(-50%);
-            text-align: center; z-index: 3; pointer-events: none; white-space: nowrap;
-            opacity: 0; transition: opacity 0.5s ease 0.5s;
-        }
-        #portfolio-scene.visible .pt-info { opacity: 1; }
-        .pt-info-tag {
-            display: block; font-family: 'Space Grotesk', sans-serif;
-            font-size: 0.62rem; font-weight: 500;
-            letter-spacing: 0.28em; text-transform: uppercase;
-            color: rgba(0,180,255,0.56); margin-bottom: 0.38rem;
-        }
-        .pt-info-title {
-            margin: 0; font-family: 'Space Grotesk', sans-serif;
-            font-size: clamp(1.1rem, 2.4vw, 1.65rem);
-            font-weight: 600; color: rgba(210,238,255,0.94); letter-spacing: 0.04em;
-            filter: drop-shadow(0 0 14px rgba(0,155,255,0.38));
-        }
-
-        /* Navigation dots */
-        .pt-dots {
-            position: absolute; bottom: 2.2rem; left: 50%;
-            transform: translateX(-50%);
-            display: flex; gap: 7px; z-index: 3;
-        }
-        .pt-dot {
-            width: 5px; height: 5px; border-radius: 50%; border: none; padding: 0;
-            background: rgba(0,130,255,0.25); cursor: default;
-            transition: background 0.28s, transform 0.28s;
-        }
-        .pt-dot.active {
-            background: rgba(0,185,255,0.90); transform: scale(1.45);
-            box-shadow: 0 0 8px rgba(0,175,255,0.60);
-        }
-        .pt-counter {
-            position: absolute; bottom: 2.05rem; right: 2.2rem;
-            font-family: 'Space Grotesk', sans-serif;
-            font-size: 0.68rem; letter-spacing: 0.14em;
-            color: rgba(70,145,215,0.40); z-index: 3; pointer-events: none;
-        }
-        .pt-hint {
-            position: absolute; bottom: 4.0rem; left: 50%;
-            transform: translateX(-50%);
-            font-family: 'Space Grotesk', sans-serif;
-            font-size: 0.60rem; letter-spacing: 0.24em; text-transform: uppercase;
-            color: rgba(70,150,215,0.32); white-space: nowrap;
-            z-index: 3; pointer-events: none;
-        }
-
-        @media (max-width: 600px) {
-            .pt-heading { letter-spacing: 0.14em; }
-            .pt-hint { display: none; }
-            .pt-counter { right: 1rem; font-size: 0.62rem; }
-            .pt-info-title { font-size: 1.1rem; }
-        }
-
     </style>
 </head>
 <body>
@@ -973,10 +872,7 @@
             renderer.setSize(window.innerWidth, window.innerHeight);
         });
 
-        // Scroll state — phase 1: fly-through (0→1), phase 2: portfolio (card 0→9)
-        let scrollLocked  = false;
-        let portfolioCard  = 0;   // integer target 0–9
-        let portfolioCardL = 0;   // lerped float
+        let scrollLocked = false;
 
         function flyLock() {
             scrollLocked = true;
@@ -984,55 +880,25 @@
                 if (Math.abs(scrollProgress - scrollTarget) < 0.03) { scrollLocked = false; clearInterval(check); }
             }, 100);
         }
-        function portLock() {
-            scrollLocked = true;
-            setTimeout(() => { scrollLocked = false; }, 660);
-        }
 
         window.addEventListener('wheel', e => {
             e.preventDefault();
             if (scrollLocked) return;
-            const inPort = scrollTarget >= 0.5 && scrollProgress > 0.94;
-            if (!inPort) {
-                if (e.deltaY > 0 && scrollTarget < 0.5) { scrollTarget = 1; flyLock(); }
-                else if (e.deltaY < 0 && scrollTarget > 0.5) { scrollTarget = 0; flyLock(); }
-            } else {
-                if (e.deltaY > 0) {
-                    if (portfolioCard < 9) { portfolioCard++; portLock(); }
-                } else {
-                    if (portfolioCard > 0) { portfolioCard--; portLock(); }
-                    else { scrollTarget = 0; flyLock(); }
-                }
-            }
+            if (e.deltaY > 0 && scrollTarget < 0.5) { scrollTarget = 1; flyLock(); }
+            else if (e.deltaY < 0 && scrollTarget > 0.5) { scrollTarget = 0; flyLock(); }
         }, { passive: false });
 
-        // Touch — vertical swipe outside portfolio, vertical+horizontal inside
-        let _touchStartY = null, _touchStartX = null;
+        let _touchStartY = null;
         window.addEventListener('touchstart', e => {
             _touchStartY = e.touches[0].clientY;
-            _touchStartX = e.touches[0].clientX;
         }, { passive: true });
         window.addEventListener('touchend', e => {
             if (_touchStartY === null) return;
             const dy = _touchStartY - e.changedTouches[0].clientY;
-            const dx = _touchStartX - e.changedTouches[0].clientX;
-            _touchStartY = null; _touchStartX = null;
-            if (scrollLocked) return;
-            const inPort = scrollTarget >= 0.5 && scrollProgress > 0.94;
-            if (!inPort) {
-                if (Math.abs(dy) < 40) return;
-                if (dy > 0 && scrollTarget < 0.5) { scrollTarget = 1; flyLock(); }
-                else if (dy < 0 && scrollTarget > 0.5) { scrollTarget = 0; flyLock(); }
-            } else {
-                if (Math.abs(dx) >= Math.abs(dy) && Math.abs(dx) > 35) {
-                    // horizontal swipe → navigate cards
-                    if (dx > 0 && portfolioCard < 9) { portfolioCard++; portLock(); }
-                    else if (dx < 0 && portfolioCard > 0) { portfolioCard--; portLock(); }
-                } else if (Math.abs(dy) > 35 && dy < 0 && portfolioCard === 0) {
-                    // swipe down on first card → exit
-                    scrollTarget = 0; flyLock();
-                }
-            }
+            _touchStartY = null;
+            if (scrollLocked || Math.abs(dy) < 40) return;
+            if (dy > 0 && scrollTarget < 0.5) { scrollTarget = 1; flyLock(); }
+            else if (dy < 0 && scrollTarget > 0.5) { scrollTarget = 0; flyLock(); }
         }, { passive: true });
 
         // Touch mousemove proxy — drives comet ignition and proximity on touch devices
@@ -1043,7 +909,7 @@
 
         // Click on logo triggers scroll fly-through (toggle in / out)
         window.addEventListener('click', () => {
-            if (window._inPortfolio || targetProximity < 0.05 || scrollLocked) return;
+            if (targetProximity < 0.05 || scrollLocked) return;
             scrollTarget = scrollTarget < 0.5 ? 1 : 0;
             scrollLocked = true;
             const check = setInterval(() => {
@@ -1148,10 +1014,6 @@
             scrollProgress += (scrollTarget - scrollProgress) * 0.055;
 
             // Portfolio card lerp + shared globals
-            portfolioCardL += (portfolioCard - portfolioCardL) * 0.082;
-            window._portfolioCard  = portfolioCard;
-            window._portfolioCardL = portfolioCardL;
-            window._inPortfolio    = scrollTarget >= 0.5 && scrollProgress > 0.90;
 
             // Emissive — sparkles only (ring mats handled per-ring below)
             logoMaterials.forEach(m => {
@@ -1194,10 +1056,7 @@
                 r.mat.emissiveIntensity = (1.90 + proximity * 2.00) * ringOpacity;
             });
 
-            // Hide main hint when portfolio is visible
-            if (hintEl) hintEl.style.opacity = window._inPortfolio ? '0' : '1';
-
-            // Update hint text based on scroll state (only matters outside portfolio)
+            // Update hint text based on scroll state
             const scrollState = scrollTarget > 0.5 ? 1 : 0;
             if (scrollState !== lastScrollState) {
                 lastScrollState = scrollState;
@@ -1211,33 +1070,6 @@
         animate();
     </script>
 
-
-    <!-- ── Portfolio section ── -->
-    <div id="portfolio-scene" aria-hidden="true">
-        <div class="pt-header">
-            <h2 class="pt-heading">Transmissions</h2>
-            <p class="pt-sub">Selected Work</p>
-        </div>
-        <canvas id="portfolio-canvas"></canvas>
-        <div class="pt-info">
-            <span class="pt-info-tag" id="pt-info-tag">Brand Film</span>
-            <h3 class="pt-info-title" id="pt-info-title">Horizon</h3>
-        </div>
-        <div class="pt-dots" id="pt-dots">
-            <button class="pt-dot active" data-idx="0" aria-label="Project 1"></button>
-            <button class="pt-dot" data-idx="1" aria-label="Project 2"></button>
-            <button class="pt-dot" data-idx="2" aria-label="Project 3"></button>
-            <button class="pt-dot" data-idx="3" aria-label="Project 4"></button>
-            <button class="pt-dot" data-idx="4" aria-label="Project 5"></button>
-            <button class="pt-dot" data-idx="5" aria-label="Project 6"></button>
-            <button class="pt-dot" data-idx="6" aria-label="Project 7"></button>
-            <button class="pt-dot" data-idx="7" aria-label="Project 8"></button>
-            <button class="pt-dot" data-idx="8" aria-label="Project 9"></button>
-            <button class="pt-dot" data-idx="9" aria-label="Project 10"></button>
-        </div>
-        <div class="pt-counter" id="pt-counter">01 / 10</div>
-        <div class="pt-hint" id="pt-hint">scroll · navigate · scroll down to continue</div>
-    </div>
 
     <!-- ── Studio name glow tracker ── -->
     <script>
@@ -1267,240 +1099,4 @@
     })();
     </script>
 
-    <!-- ── Portfolio — Three.js planet scene ── -->
-    <script type="module">
-    import * as THREE from 'three';
-    (function () {
-        const ptSceneEl = document.getElementById('portfolio-scene');
-        const ptCanvas  = document.getElementById('portfolio-canvas');
-        const infoTag   = document.getElementById('pt-info-tag');
-        const infoTitle = document.getElementById('pt-info-title');
-        const dots      = document.querySelectorAll('.pt-dot');
-        const counter   = document.getElementById('pt-counter');
-
-        // ── Renderer + scene + camera ──
-        const ptR = new THREE.WebGLRenderer({ canvas: ptCanvas, alpha: true, antialias: true });
-        ptR.setPixelRatio(Math.min(devicePixelRatio, 2));
-        const ptScene = new THREE.Scene();
-        const ptCam   = new THREE.PerspectiveCamera(62, 1, 0.1, 200);
-        ptCam.position.set(0, 0.2, 5.5);
-
-        function ptResize() {
-            const W = window.innerWidth, H = window.innerHeight;
-            ptR.setSize(W, H);
-            ptCam.aspect = W / H;
-            ptCam.updateProjectionMatrix();
-        }
-        ptResize();
-        window.addEventListener('resize', ptResize);
-
-        // ── Planet data ──
-        const DATA = [
-            { title:'Horizon', tag:'Brand Film',          ringTilt:0.45, atm:0x1155dd, body:0x030c1a, ring:0x2266ee, c1:'#030b1a',c2:'#082040',c3:'rgba(30,90,210,1)',  videoSrc:'' },
-            { title:'Nexus',   tag:'Product Launch',       ringTilt:0.62, atm:0x6622ff, body:0x070420, ring:0x8833ff, c1:'#060420',c2:'#11083c',c3:'rgba(110,40,220,1)', videoSrc:'' },
-            { title:'Aurora',  tag:'Brand Identity',       ringTilt:0.28, atm:0x00aacc, body:0x021416, ring:0x11bbdd, c1:'#021416',c2:'#052830',c3:'rgba(0,170,200,1)',  videoSrc:'' },
-            { title:'Pulse',   tag:'Social Campaign',      ringTilt:0.72, atm:0x9900cc, body:0x090318, ring:0xbb11dd, c1:'#090318',c2:'#150530',c3:'rgba(160,0,200,1)',  videoSrc:'' },
-            { title:'Vertex',  tag:'Motion Reel',          ringTilt:0.50, atm:0x0044bb, body:0x020b1e, ring:0x1155cc, c1:'#020b1e',c2:'#061a3c',c3:'rgba(0,70,190,1)',  videoSrc:'' },
-            { title:'Echo',    tag:'Documentary',          ringTilt:0.22, atm:0x5500aa, body:0x060318, ring:0x7722bb, c1:'#060318',c2:'#0f0630',c3:'rgba(90,0,170,1)',  videoSrc:'' },
-            { title:'Flux',    tag:'Interactive',          ringTilt:0.58, atm:0x009999, body:0x021414, ring:0x11aaaa, c1:'#021414',c2:'#042626',c3:'rgba(0,155,155,1)', videoSrc:'' },
-            { title:'Prism',   tag:'Exhibition',           ringTilt:0.36, atm:0x3322bb, body:0x04061e, ring:0x5544cc, c1:'#04061e',c2:'#0a0c3a',c3:'rgba(60,50,200,1)', videoSrc:'' },
-            { title:'Nova',    tag:'Broadcast',            ringTilt:0.66, atm:0x0077bb, body:0x020c1e, ring:0x1199cc, c1:'#020c1e',c2:'#05183c',c3:'rgba(0,120,185,1)', videoSrc:'' },
-            { title:'Zenith',  tag:'Integrated Campaign',  ringTilt:0.42, atm:0x006699, body:0x030e16, ring:0x1188aa, c1:'#030e16',c2:'#061c2c',c3:'rgba(0,105,155,1)', videoSrc:'' },
-        ];
-        const SPACING = 5.8;
-
-        // ── Shaders for circular video disc ──
-        const VS = `varying vec2 vUv;void main(){vUv=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}`;
-        const FS = `
-            uniform sampler2D tMap;
-            uniform float uOpacity;
-            varying vec2 vUv;
-            void main(){
-                vec2 c=vUv-0.5;
-                float d=length(c);
-                if(d>0.496)discard;
-                float alpha=smoothstep(0.496,0.40,d);
-                // Center-crop: show square center of 9:16 video
-                vec2 uv2=vec2(vUv.x, 0.5+(vUv.y-0.5)*(9.0/16.0));
-                vec4 col=texture2D(tMap,uv2);
-                // Scanlines + vignette
-                float scan=0.93+0.07*sin(vUv.y*100.0);
-                float vig=1.0-d*0.55;
-                gl_FragColor=vec4(col.rgb*scan*vig, col.a*alpha*uOpacity);
-            }
-        `;
-
-        // ── Placeholder canvas textures ──
-        function makeTex(c1, c2, c3) {
-            const cv = document.createElement('canvas');
-            cv.width = 512; cv.height = 512;
-            const ctx = cv.getContext('2d');
-            const g = ctx.createRadialGradient(256,256,0, 256,256,256);
-            g.addColorStop(0, c2); g.addColorStop(1, c1);
-            ctx.fillStyle = g; ctx.fillRect(0,0,512,512);
-            // Grid lines
-            ctx.strokeStyle = c3; ctx.lineWidth = 0.7; ctx.globalAlpha = 0.11;
-            for(let x=0;x<512;x+=32){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,512);ctx.stroke();}
-            for(let y=0;y<512;y+=32){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(512,y);ctx.stroke();}
-            ctx.globalAlpha = 1;
-            // Concentric rings
-            ctx.strokeStyle = c3; ctx.globalAlpha = 0.20;
-            [60,110,165].forEach(r=>{ctx.beginPath();ctx.arc(256,256,r,0,Math.PI*2);ctx.lineWidth=1;ctx.stroke();});
-            ctx.globalAlpha = 1;
-            // Centre dot
-            ctx.fillStyle = c3; ctx.globalAlpha = 0.32;
-            ctx.beginPath();ctx.arc(256,256,5,0,Math.PI*2);ctx.fill();
-            ctx.globalAlpha = 1;
-            return new THREE.CanvasTexture(cv);
-        }
-
-        // ── Build 10 planets ──
-        const planets = [];
-        DATA.forEach((d, i) => {
-            const grp = new THREE.Group();
-            grp.position.x = i * SPACING;
-
-            // Sphere body
-            const bodyMat = new THREE.MeshStandardMaterial({
-                color: new THREE.Color(d.body),
-                roughness: 0.82, metalness: 0.06,
-                emissive: new THREE.Color(d.atm), emissiveIntensity: 0.05,
-            });
-            grp.add(new THREE.Mesh(new THREE.SphereGeometry(1.0, 52, 52), bodyMat));
-
-            // Inner atmosphere
-            const atmMat = new THREE.MeshBasicMaterial({
-                color: new THREE.Color(d.atm),
-                transparent:true, opacity:0.10, side:THREE.BackSide, depthWrite:false,
-            });
-            grp.add(new THREE.Mesh(new THREE.SphereGeometry(1.22, 32, 32), atmMat));
-
-            // Outer halo
-            const haloMat = new THREE.MeshBasicMaterial({
-                color: new THREE.Color(d.atm),
-                transparent:true, opacity:0.04, side:THREE.BackSide, depthWrite:false,
-            });
-            grp.add(new THREE.Mesh(new THREE.SphereGeometry(1.60, 32, 32), haloMat));
-
-            // Video / placeholder disc
-            let tex;
-            if (d.videoSrc) {
-                const vid = document.createElement('video');
-                vid.src = d.videoSrc; vid.loop = vid.muted = vid.playsInline = true;
-                vid.preload = 'none';
-                tex = new THREE.VideoTexture(vid);
-                tex.minFilter = tex.magFilter = THREE.LinearFilter;
-            } else {
-                tex = makeTex(d.c1, d.c2, d.c3);
-            }
-            const discMat = new THREE.ShaderMaterial({
-                uniforms: { tMap:{value:tex}, uOpacity:{value:0.88} },
-                vertexShader:VS, fragmentShader:FS,
-                transparent:true, depthTest:true, depthWrite:false,
-            });
-            const disc = new THREE.Mesh(new THREE.PlaneGeometry(1.14,1.14), discMat);
-            disc.position.z = 1.012;
-            grp.add(disc);
-
-            // Primary ring
-            const rGeo = new THREE.TorusGeometry(1.55, 0.028, 6, 120);
-            rGeo.rotateX(d.ringTilt);
-            const ringMat = new THREE.MeshBasicMaterial({
-                color: new THREE.Color(d.ring), transparent:true, opacity:0.38,
-            });
-            grp.add(new THREE.Mesh(rGeo, ringMat));
-
-            // Secondary outer ring
-            const r2Geo = new THREE.TorusGeometry(1.84, 0.013, 6, 120);
-            r2Geo.rotateX(d.ringTilt * 1.28);
-            const ring2Mat = new THREE.MeshBasicMaterial({
-                color: new THREE.Color(d.ring), transparent:true, opacity:0.16,
-            });
-            grp.add(new THREE.Mesh(r2Geo, ring2Mat));
-
-            ptScene.add(grp);
-            planets.push({ grp, bodyMat, atmMat, haloMat, discMat, ringMat, ring2Mat });
-        });
-
-        // ── Lights ──
-        ptScene.add(new THREE.AmbientLight(0x0a1525, 1.8));
-        const ptSun  = new THREE.PointLight(0x4499dd, 9, 30);
-        ptSun.position.set(-1, 3, 6);
-        ptScene.add(ptSun);
-        const ptFill = new THREE.PointLight(0x220033, 3, 20);
-        ptFill.position.set(2, -1, 4);
-        ptScene.add(ptFill);
-
-        // ── UI ──
-        let lastIdx = -1, lastVis = false;
-        function updateUI(idx) {
-            dots.forEach((d, i) => d.classList.toggle('active', i === idx));
-            if (counter)   counter.textContent   = String(idx+1).padStart(2,'0') + ' / 10';
-            if (infoTag)   { infoTag.style.opacity='0'; setTimeout(()=>{ infoTag.textContent=DATA[idx].tag; infoTag.style.opacity='1'; },160); }
-            if (infoTitle) { infoTitle.style.opacity='0'; setTimeout(()=>{ infoTitle.textContent=DATA[idx].title; infoTitle.style.opacity='1'; },160); }
-        }
-        infoTag.style.transition   = 'opacity 0.3s ease';
-        infoTitle.style.transition = 'opacity 0.3s ease';
-        dots.forEach((dot, i) => dot.addEventListener('click', () => {
-            if (window._inPortfolio) window._portfolioCard = i;
-        }));
-
-        // ── Animate ──
-        let ptTime = 0, ptLast = performance.now();
-        function animPlanets() {
-            requestAnimationFrame(animPlanets);
-            const now = performance.now();
-            ptTime += Math.min((now - ptLast) / 1000, 0.05);
-            ptLast = now;
-
-            const inP = !!window._inPortfolio;
-            if (inP !== lastVis) {
-                lastVis = inP;
-                ptSceneEl.classList.toggle('visible', inP);
-                ptSceneEl.setAttribute('aria-hidden', String(!inP));
-            }
-            if (!inP) return;
-
-            const cardL = window._portfolioCardL || 0;
-            const cardI = Math.round(cardL);
-
-            // Camera smoothly chases active planet
-            const tx = cardL * SPACING;
-            ptCam.position.x += (tx - ptCam.position.x) * 0.085;
-            ptSun.position.x  = ptCam.position.x - 2;
-            ptFill.position.x = ptCam.position.x + 3;
-
-            planets.forEach((p, i) => {
-                const dist = Math.abs(i - cardL);
-                const active = dist < 0.5;
-
-                // Slow body rotation
-                p.grp.children[0].rotation.y += 0.0022;
-
-                // Atmosphere glow
-                const aT = active ? 0.24 : Math.max(0.04, 0.12 - dist * 0.025);
-                p.atmMat.opacity  += (aT       - p.atmMat.opacity)  * 0.07;
-                p.haloMat.opacity += (aT*0.20  - p.haloMat.opacity) * 0.07;
-
-                // Rings
-                const rT = active ? 0.44 : Math.max(0.05, 0.20 - dist * 0.04);
-                p.ringMat.opacity  += (rT      - p.ringMat.opacity)  * 0.07;
-                p.ring2Mat.opacity += (rT*0.40 - p.ring2Mat.opacity) * 0.07;
-
-                // Emissive on body
-                p.bodyMat.emissiveIntensity += ((active ? 0.18 : 0.04) - p.bodyMat.emissiveIntensity) * 0.06;
-
-                // Disc brightness
-                const dT = Math.max(0.15, 0.88 - dist * 0.22);
-                p.discMat.uniforms.uOpacity.value += (dT - p.discMat.uniforms.uOpacity.value) * 0.07;
-            });
-
-            if (cardI !== lastIdx) { lastIdx = cardI; updateUI(cardI); }
-            ptR.render(ptScene, ptCam);
-        }
-        animPlanets();
-    })();
-    </script>
-
 </body>
-</html>
