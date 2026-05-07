@@ -1,0 +1,1386 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Deep Creative Studio — Space Test</title>
+    <meta name="description" content="Deep Creative Studio — a 3D creative agency crafting immersive digital experiences, motion design, and interactive web worlds.">
+    <meta property="og:title" content="Deep Creative Studio">
+    <meta property="og:description" content="Immersive 3D digital experiences and motion design.">
+    <meta property="og:type" content="website">
+    <link rel="preload" href="logo_3d_optimized.glb" as="fetch" crossorigin>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.166/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.166/examples/jsm/"
+      }
+    }
+    </script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&family=Space+Grotesk:wght@500;600;700&display=swap');
+
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: #000005;
+            font-family: 'Inter', system-ui, -apple-system, sans-serif;
+        }
+
+        /* Loading screen */
+        #loading-screen {
+            position: fixed;
+            inset: 0;
+            z-index: 100;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            background: #000005;
+            transition: opacity 0.8s ease;
+        }
+        #loading-screen.hidden {
+            opacity: 0;
+            pointer-events: none;
+        }
+        .loader-ring {
+            width: 48px;
+            height: 48px;
+            border: 2px solid rgba(38,178,219,0.15);
+            border-top-color: rgba(38,178,219,0.85);
+            border-radius: 50%;
+            animation: spin 0.9s linear infinite;
+        }
+        .loader-label {
+            margin-top: 1rem;
+            font-family: 'Space Grotesk', system-ui, sans-serif;
+            font-size: 0.72rem;
+            letter-spacing: 0.22em;
+            text-transform: uppercase;
+            color: rgba(100, 220, 255, 0.50);
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        @media (prefers-reduced-motion: reduce) {
+            .loader-ring { animation: none; border-top-color: rgba(38,178,219,0.85); }
+        }
+
+        /* Layer 1 — Three.js 3D logo */
+        #three-canvas {
+            position: fixed;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            z-index: 1;
+            cursor: default;
+            /* CSS glow — respects alpha, never bleeds into background */
+            filter: drop-shadow(0 0 3px rgba(38, 178, 219, 0.60))
+                    drop-shadow(0 0 1px rgba(118, 224, 250, 0.40));
+        }
+
+        /* Layer 3 — star particles, in front of logo */
+        #particleCanvas {
+            position: fixed;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            z-index: 3;
+            pointer-events: none;
+            mix-blend-mode: screen;
+        }
+
+        /* Layer 4 — text UI */
+        #ui-layer {
+            position: fixed;
+            bottom: 2rem;
+            width: 100%;
+            text-align: center;
+            z-index: 10;
+            pointer-events: none;
+        }
+
+        #hint {
+            color: rgba(100, 220, 255, 0.85);
+            font-size: 0.82rem;
+            letter-spacing: 0.22em;
+            text-transform: uppercase;
+            user-select: none;
+        }
+
+        /* ── Studio name ── */
+        #studio-name {
+            position: fixed;
+            top: calc(50% + 15vh);
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 10;
+            text-align: center;
+            pointer-events: none;
+            white-space: nowrap;
+            transition: opacity 0.5s ease;
+        }
+
+        /* Expanding rule that draws before the words appear */
+        .sn-rule {
+            height: 1px;
+            width: 0;
+            margin: 0 auto 14px;
+            background: linear-gradient(90deg,
+                transparent 0%,
+                rgba(38,178,219,0.25) 15%,
+                rgba(118,224,250,0.75) 50%,
+                rgba(38,178,219,0.25) 85%,
+                transparent 100%
+            );
+            animation: sn-expand 1s cubic-bezier(0.4,0,0.2,1) 1.3s forwards;
+        }
+        @keyframes sn-expand { to { width: 220px; } }
+
+        .sn-words {
+            display: flex;
+            align-items: center;
+            gap: 0.65em;
+            position: relative;
+            overflow: hidden; /* clips the sweep */
+        }
+
+        /* Scan-light sweep — mirrors the 3D logo scan beam */
+        .sn-words::before {
+            content: '';
+            position: absolute;
+            inset: -30% 0;
+            left: -70%;
+            width: 45%;
+            background: linear-gradient(
+                90deg,
+                transparent 0%,
+                rgba(180, 235, 255, 0.22) 40%,
+                rgba(220, 248, 255, 0.38) 50%,
+                rgba(180, 235, 255, 0.22) 60%,
+                transparent 100%
+            );
+            mix-blend-mode: screen;
+            animation: sn-sweep 8s cubic-bezier(0.4, 0, 0.6, 1) 3.2s infinite;
+            pointer-events: none;
+        }
+        @keyframes sn-sweep {
+            0%, 65%, 100% { left: -70%; }
+            30%            { left: 120%; }
+        }
+
+        /* Each word is clipped so the rise plays as a reveal from the rule */
+        .sn-clip {
+            overflow: hidden;
+            padding: 0.12em 0;
+        }
+
+        .sn-sep {
+            font-size: 0.45rem;
+            color: rgba(38, 178, 219, 0.40);
+            line-height: 1;
+            transform: translateY(2px);
+            opacity: 0;
+            animation: sn-sep-in 0.3s ease 2.1s forwards;
+        }
+        @keyframes sn-sep-in { to { opacity: 1; } }
+
+        .sn-w {
+            display: block;
+            font-family: 'Space Grotesk', system-ui, sans-serif;
+            font-size: 0.96rem;
+            font-weight: 500;
+            letter-spacing: 0.40em;
+            text-transform: uppercase;
+            /* Gradient text — cyan edge → white centre → cyan edge */
+            background: linear-gradient(
+                135deg,
+                rgba(38,178,219,0.90)  0%,
+                rgba(118,224,250,0.95) 35%,
+                rgba(220,248,255,1.00) 50%,
+                rgba(118,224,250,0.95) 65%,
+                rgba(38,178,219,0.90)  100%
+            );
+            -webkit-background-clip: text;
+            background-clip: text;
+            -webkit-text-fill-color: transparent;
+            /* Neon depth glow — three layers like the 3D logo */
+            filter:
+                drop-shadow(0 0  4px rgba(38,178,219,0.80))
+                drop-shadow(0 0 12px rgba(38,178,219,0.45))
+                drop-shadow(0 0 28px rgba(38,178,219,0.20));
+            /* Start hidden below the clip line */
+            transform: translateY(115%);
+            opacity: 0;
+            animation: sn-rise 0.75s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+        }
+
+        .sn-clip-1 .sn-w { animation-delay: 1.55s; }
+        .sn-clip-2 .sn-w { animation-delay: 1.80s; }
+        .sn-clip-3 .sn-w { animation-delay: 2.05s; }
+
+        @keyframes sn-rise {
+            to { transform: translateY(0); opacity: 1; }
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            .sn-rule, .sn-w, .sn-sep { animation: none; width: 220px; opacity: 1; transform: none; }
+            .sn-words::before { animation: none; }
+        }
+
+        /* Visually hidden — accessible to screen readers, invisible on screen */
+        .sr-only {
+            position: absolute;
+            width: 1px; height: 1px;
+            padding: 0; margin: -1px;
+            overflow: hidden;
+            clip: rect(0,0,0,0);
+            white-space: nowrap;
+            border: 0;
+        }
+
+        /* Reduce / pause non-essential animations for users who prefer it */
+        @media (prefers-reduced-motion: reduce) { }
+
+        /* ── Planet section layers ── */
+        .planet-layer {
+            position: fixed; inset: 0; z-index: 20;
+            display: flex; flex-direction: column;
+            align-items: center; justify-content: center;
+            opacity: 0; pointer-events: none;
+            transition: opacity 0.8s ease;
+        }
+        .planet-layer.visible { opacity: 1; pointer-events: auto; }
+
+        .pl-eyebrow {
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 0.62rem; font-weight: 500;
+            letter-spacing: 0.38em; text-transform: uppercase;
+            color: rgba(100, 220, 255, 0.45);
+            margin: 0 0 1rem;
+        }
+        .pl-title {
+            margin: 0 0 0.6rem;
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: clamp(2rem, 5vw, 3.8rem);
+            font-weight: 700; letter-spacing: 0.04em;
+            background: linear-gradient(135deg, #a8daff 0%, #ffffff 50%, #70c8ff 100%);
+            -webkit-background-clip: text; background-clip: text;
+            -webkit-text-fill-color: transparent;
+            filter: drop-shadow(0 0 24px rgba(0,160,255,0.40));
+            text-align: center;
+        }
+        .pl-sub {
+            font-family: 'Inter', sans-serif;
+            font-size: clamp(0.85rem, 1.6vw, 1.1rem);
+            color: rgba(160, 215, 255, 0.55);
+            max-width: 480px; text-align: center; line-height: 1.7;
+            margin: 0 0 2.4rem; padding: 0 1.5rem;
+        }
+        .pl-cta {
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 0.72rem; font-weight: 600;
+            letter-spacing: 0.25em; text-transform: uppercase;
+            color: rgba(100, 200, 255, 0.70);
+            border: 1px solid rgba(80, 180, 255, 0.22);
+            padding: 0.65rem 1.8rem; border-radius: 2rem;
+            background: rgba(0, 40, 80, 0.25);
+            backdrop-filter: blur(8px);
+            cursor: pointer;
+            transition: color 0.3s, border-color 0.3s, background 0.3s;
+        }
+        .pl-cta:hover {
+            color: rgba(180, 235, 255, 0.95);
+            border-color: rgba(100, 200, 255, 0.50);
+            background: rgba(0, 60, 120, 0.35);
+        }
+
+        /* Space navigation hint (bottom) */
+        #space-nav-hint {
+            position: fixed; bottom: 2rem; left: 50%;
+            transform: translateX(-50%);
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 0.60rem; letter-spacing: 0.26em; text-transform: uppercase;
+            color: rgba(100, 180, 255, 0.30);
+            z-index: 25; pointer-events: none;
+            opacity: 0; transition: opacity 0.6s ease;
+            white-space: nowrap;
+        }
+        #space-nav-hint.visible { opacity: 1; }
+
+    </style>
+</head>
+<body>
+
+
+    <!-- Loading screen — visible until GLB is ready -->
+    <div id="loading-screen" role="status" aria-label="Loading Deep Creative Studio">
+        <div class="loader-ring"></div>
+        <p class="loader-label">Loading</p>
+    </div>
+
+    <!-- Three.js 3D logo -->
+    <canvas id="three-canvas" aria-hidden="true"></canvas>
+
+    <!-- Star / meteor background (decorative) -->
+    <canvas id="particleCanvas" aria-hidden="true"></canvas>
+
+    <!-- Studio name — below the 3D logo -->
+    <div id="studio-name" aria-label="Deep Creative Studio">
+        <div class="sn-rule"></div>
+        <div class="sn-words">
+            <div class="sn-clip sn-clip-1"><span class="sn-w">Deep</span></div>
+            <span class="sn-sep">·</span>
+            <div class="sn-clip sn-clip-2"><span class="sn-w">Creative</span></div>
+            <span class="sn-sep">·</span>
+            <div class="sn-clip sn-clip-3"><span class="sn-w">Studio</span></div>
+        </div>
+    </div>
+
+    <!-- Hint text -->
+    <div id="ui-layer">
+        <h1 class="sr-only">Deep Creative Studio — Interactive 3D Experience</h1>
+        <p id="hint"><!-- text set by JS based on device --></p>
+    </div>
+
+    <!-- ── Vortex galaxy particle system ── -->
+    <script>
+        const canvas = document.getElementById('particleCanvas');
+        const ctx = canvas.getContext('2d');
+
+        let width, height, innerR;
+        let stars = [], shooters = [], comets = [];
+        let mouseX = 0, mouseY = 0;
+        let absorptions = [];
+
+        const STAR_COUNT    = 1000;
+        const SHOOTER_COUNT = 12;
+        const COMET_COUNT   = 5;
+        const DISK_TILT     = 0.85;
+        const PULL_R        = 180; // px — wider mouse influence radius
+        const COLORS = ['#76e0fa','#26b2db','#009bfc','#005dbd','#ffffff','#4dcfee'];
+
+        class VortexStar {
+            constructor() { this.init(false); }
+            init(outerSpawn) {
+                const maxR     = Math.sqrt((width/2)**2 + (height/2)**2) * 1.05;
+                const GRAV_ZONE = Math.min(width, height) * 0.16;
+                // Always use the full-field distribution so density stays uniform forever.
+                // outerSpawn only controls whether the star fades in (avoids pop-in).
+                const t = Math.pow(Math.random(), 0.6);
+                this.baseR  = innerR + (maxR - innerR) * t;
+                this.r      = this.baseR;
+                this.angle  = Math.random() * Math.PI * 2;
+                this.size   = Math.random() * 2.4 + 1.1;
+                this.color  = COLORS[Math.floor(Math.random() * COLORS.length)];
+                this.baseOp = Math.random() * 0.35 + 0.65;
+                this.twinklePhase = Math.random() * Math.PI * 2;
+                this.twinkleRate  = Math.random() * 1.5 + 0.5;
+                this.pullOff  = 0;
+                this.fadeAlpha = outerSpawn ? 0 : 1;
+                this.ownOmega = 0.00225 * Math.sqrt(innerR / Math.max(innerR + 1, this.baseR));
+                this.caught   = this.baseR < GRAV_ZONE;
+                this.entryR   = this.caught ? this.baseR : null;
+                this.dead      = false;
+                this.deadTimer = 0;
+                this.resistance = Math.random(); // 0 = pulls in easily, 1 = fights and escapes
+                this.escaping   = false;
+                this.escapeV    = 0;
+            }
+            update(ms) {
+                const scrollP = window._camScrollZ || 0;
+                // Gravity zone expands as camera flies in — more stars get caught during scroll
+                const GRAV_ZONE = Math.min(width, height) * (0.16 + scrollP * 0.13);
+
+                // Dead — waiting in darkness; when timer expires a new star is born at outer edge
+                if (this.dead) {
+                    this.deadTimer--;
+                    if (this.deadTimer <= 0) {
+                        this.init(true); // new star appears far away, fades in slowly
+                    }
+                    return;
+                }
+
+                // Enter gravity zone — point of no return
+                if (!this.caught && this.baseR < GRAV_ZONE) {
+                    this.caught = true;
+                    this.entryR = this.baseR;
+                }
+
+                // During scroll, tidal pull drags all free stars gently inward
+                if (scrollP > 0 && !this.caught) {
+                    this.baseR -= scrollP * 0.35;
+                }
+
+                // Magnetic zone — resistant stars fight back but weaken over time
+                if (!this.caught) {
+                    const MAGNET_ZONE    = GRAV_ZONE * 1.7;
+                    const OUTER_DRAG_ZONE = GRAV_ZONE * 2.8;
+
+                    if (this.baseR < MAGNET_ZONE) {
+                        const t    = (MAGNET_ZONE - this.baseR) / (MAGNET_ZONE - GRAV_ZONE);
+                        const pull = Math.pow(t, 1.5) * 2.2;
+
+                        // No resistance during scroll — everything gets pulled in
+                        if (!this.escaping && this.resistance > 0.58 && t > 0.25 && scrollP < 0.05) {
+                            this.escaping = true;
+                            this.escapeV  = (this.resistance - 0.4) * 5.5 + pull * 1.8;
+                        }
+
+                        if (this.escaping && scrollP >= 0.05) {
+                            // Scroll started mid-escape — kill resistance immediately
+                            this.escaping = false;
+                            this.escapeV  = 0;
+                        }
+
+                        if (this.escaping) {
+                            this.escapeV -= pull * 0.55;
+                            this.escapeV  = Math.max(0, this.escapeV);
+                            this.baseR   += this.escapeV;
+
+                            if (this.escapeV <= 0) {
+                                this.escaping = false;
+                                this.caught   = true;
+                                this.entryR   = this.baseR;
+                            } else if (this.baseR >= MAGNET_ZONE) {
+                                this.escaping    = false;
+                                this.resistance  = Math.max(0, this.resistance - 0.20);
+                            }
+                        } else {
+                            this.baseR -= pull;
+                        }
+
+                    } else if (this.escapeV > 0) {
+                        // Outside magnet zone — still feel decreasing drag as they move away
+                        if (this.baseR < OUTER_DRAG_ZONE) {
+                            const tOuter = (OUTER_DRAG_ZONE - this.baseR) / (OUTER_DRAG_ZONE - MAGNET_ZONE);
+                            this.escapeV -= tOuter * 0.30;
+                            this.escapeV  = Math.max(0, this.escapeV);
+                        }
+                        this.baseR  += this.escapeV;
+                        this.escapeV *= 0.91;
+                        if (this.escapeV < 0.05) this.escapeV = 0;
+                    }
+                }
+
+                let omega;
+                if (!this.caught) {
+                    omega = this.ownOmega;
+                } else {
+                    const speedup = Math.pow(this.entryR / Math.max(innerR + 1, this.baseR), 1.5);
+                    omega = this.ownOmega * speedup;
+                    const factor = Math.pow(GRAV_ZONE / Math.max(this.baseR, innerR + 1), 2.0);
+                    // Spiral slower during scroll so you can see the animation as you fly through
+                    const spiralRate = 1 - scrollP * 0.55;
+                    this.baseR -= (0.28 + 0.18 * factor) * spiralRate;
+                }
+                this.angle += omega;
+
+                // Mouse nudge
+                const sx = width/2 + Math.cos(this.angle) * this.baseR;
+                const sy = height/2 + Math.sin(this.angle) * this.baseR * DISK_TILT;
+                const mdist = Math.sqrt((sx - mouseX)**2 + (sy - mouseY)**2);
+                if (mdist < PULL_R) {
+                    const f = (PULL_R - mdist) / PULL_R;
+                    this.pullOff = Math.min(this.pullOff + f * 4.5, 80);
+                    if (f > 0.25) this.baseR -= f * 0.5;
+                } else {
+                    this.pullOff *= 0.78;
+                }
+                if (!this.caught) {
+                    const pulled = this.baseR - this.pullOff;
+                    if (pulled <= GRAV_ZONE) {
+                        // Reaching the margin triggers vanishing — no sticking to logo border
+                        this.caught  = true;
+                        this.baseR   = GRAV_ZONE;
+                        this.entryR  = GRAV_ZONE;
+                        this.pullOff = 0;
+                        this.r       = GRAV_ZONE;
+                    } else {
+                        this.r = pulled;
+                    }
+                } else {
+                    this.r = this.baseR;
+                }
+
+                if (this.fadeAlpha < 1) this.fadeAlpha = Math.min(1, this.fadeAlpha + 0.01);
+
+                // Cross event horizon — star is consumed, new one spawns from outer edge immediately
+                if (this.baseR <= innerR + 2) {
+                    const absX = width/2 + Math.cos(this.angle) * innerR;
+                    const absY = height/2 + Math.sin(this.angle) * innerR * DISK_TILT;
+                    absorptions.push({ x: absX, y: absY, time: 28, maxTime: 28 });
+                    this.init(true); // spawn fresh star from outer edge right away
+                    return;
+                }
+
+                const eventFade = Math.min(1, Math.max(0, (this.baseR - innerR) / (innerR * 0.7)));
+                const edge      = Math.min(1, (this.baseR - innerR) / 50);
+                const twinkle   = 0.80 + 0.20 * Math.sin(ms * 0.001 * this.twinkleRate + this.twinklePhase);
+                this.opacity    = this.baseOp * edge * twinkle * eventFade * this.fadeAlpha;
+            }
+            draw() {
+                if (this.dead) return;
+                const x = width/2  + Math.cos(this.angle) * this.r;
+                const y = height/2 + Math.sin(this.angle) * this.r * DISK_TILT;
+                ctx.globalAlpha = Math.max(0, this.opacity);
+                ctx.fillStyle   = this.color;
+                if (this.caught) {
+                    const GRAV_ZONE = Math.min(width, height) * (0.16 + (window._camScrollZ || 0) * 0.13);
+                    // progress = 1 at gravity zone edge, 0 at event horizon
+                    const progress = Math.min(1, Math.max(0, (this.baseR - innerR) / (GRAV_ZONE - innerR)));
+                    const sizeFactor = Math.max(0.05, progress * progress);
+                    const stretch = 1 + (1 - progress) * 3.5;
+                    // Y starts equal to X at boundary (circle) and compresses as star falls in
+                    const yScale = Math.max(0.25, progress);
+                    const toCenter = Math.atan2(y - height/2, x - width/2);
+                    ctx.save();
+                    ctx.translate(x, y);
+                    ctx.rotate(toCenter);
+                    ctx.beginPath();
+                    ctx.ellipse(0, 0, this.size * sizeFactor * stretch, this.size * sizeFactor * yScale, 0, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.restore();
+                } else {
+                    ctx.beginPath();
+                    ctx.arc(x, y, this.size, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+            }
+        }
+
+        class ShootingStar {
+            constructor() { this.reset(true); }
+            reset(randomDelay = false) {
+                const spawnR = innerR * 4 + Math.random() * Math.min(width, height) * 0.35;
+                const spawnA = Math.random() * Math.PI * 2;
+                this.x = width  / 2 + Math.cos(spawnA) * spawnR;
+                this.y = height / 2 + Math.sin(spawnA) * spawnR * DISK_TILT;
+                const tangent = spawnA + Math.PI / 2 + (Math.random() - 0.5) * 0.6;
+                const speed   = Math.random() * 6 + 4;
+                this.vx = Math.cos(tangent) * speed;
+                this.vy = Math.sin(tangent) * speed;
+                this.history = [];
+                this.opacity  = 0;
+                this.size     = Math.random() * 1.2 + 1.0;
+                this.active   = false;
+                this.timer    = randomDelay ? Math.random() * 400 + 80 : Math.random() * 300 + 120;
+            }
+            update() {
+                if (!this.active) {
+                    if (--this.timer <= 0) { this.active = true; this.opacity = 0.9; }
+                    return;
+                }
+                this.history.push({ x: this.x, y: this.y });
+                if (this.history.length > 16) this.history.shift();
+                this.x += this.vx; this.y += this.vy;
+                this.opacity -= 0.008;
+                if (this.opacity <= 0 || this.x < -100 || this.x > width+100 || this.y < -100 || this.y > height+100)
+                    this.reset();
+            }
+            draw() {
+                if (!this.active || this.opacity <= 0 || this.history.length < 2) return;
+                ctx.beginPath();
+                ctx.moveTo(this.history[0].x, this.history[0].y);
+                this.history.forEach(p => ctx.lineTo(p.x, p.y));
+                ctx.lineTo(this.x, this.y);
+                ctx.strokeStyle = `rgba(200,230,255,${this.opacity * 0.6})`;
+                ctx.lineWidth   = this.size * 0.8;
+                ctx.lineCap     = 'round';
+                ctx.shadowBlur  = 12; ctx.shadowColor = '#aaddff';
+                ctx.stroke();
+                ctx.shadowBlur  = 0;
+                ctx.globalAlpha = this.opacity;
+                ctx.fillStyle   = '#ffffff';
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size * 0.8, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+
+        class Comet {
+            constructor() { this.spawn(true); }
+
+            spawn(randomDelay) {
+                const angle  = Math.random() * Math.PI * 2;
+                const r      = innerR * 3.5 + Math.random() * Math.min(width, height) * 0.32;
+                this.x       = width/2  + Math.cos(angle) * r;
+                this.y       = height/2 + Math.sin(angle) * r * DISK_TILT;
+                const tangent = angle + Math.PI / 2;
+                const spd    = 0.8 + Math.random() * 0.7;
+                this.vx      = Math.cos(tangent) * spd;
+                this.vy      = Math.sin(tangent) * spd * DISK_TILT;
+                this.history = [];
+                this.lit     = false;
+                this.size    = 2.2 + Math.random() * 1.2;
+                this.color   = ['#60e0ff','#a0d8ff','#ffe0a0','#c0d8ff'][Math.floor(Math.random()*4)];
+                this.active  = !randomDelay;
+                this.timer   = randomDelay ? Math.random() * 300 + 60 : 0;
+                this.life    = 0;
+            }
+
+            activate() {
+                if (this.lit) return;
+                this.lit = true;
+                const spd   = Math.sqrt(this.vx*this.vx + this.vy*this.vy);
+                const scale = (7 + Math.random() * 4) / Math.max(spd, 0.1);
+                this.vx *= scale;
+                this.vy *= scale;
+                const dx = width/2 - this.x, dy = height/2 - this.y;
+                const d  = Math.sqrt(dx*dx + dy*dy) + 1;
+                this.vx += dx/d * 2.5;
+                this.vy += dy/d * 2.5;
+            }
+
+            update() {
+                if (!this.active) { if (--this.timer <= 0) this.active = true; return; }
+                if (!this.lit) {
+                    const d = Math.sqrt((this.x - mouseX)**2 + (this.y - mouseY)**2);
+                    if (d < 90) this.activate();
+                }
+                this.history.push({ x: this.x, y: this.y });
+                const maxTail = this.lit ? 40 : 10;
+                if (this.history.length > maxTail) this.history.shift();
+                this.x += this.vx;
+                this.y += this.vy;
+                this.life++;
+                if (this.lit) {
+                    const dx = width/2 - this.x, dy = height/2 - this.y;
+                    const d  = Math.sqrt(dx*dx + dy*dy) + 1;
+                    this.vx += dx/d * 0.10;
+                    this.vy += dy/d * 0.10;
+                }
+                const off = this.x < -250 || this.x > width+250 || this.y < -250 || this.y > height+250;
+                if (off || (this.lit && this.life > 240)) this.spawn(false);
+            }
+
+            draw() {
+                if (!this.active || this.history.length < 2) return;
+                const n = this.history.length;
+                for (let i = 1; i < n; i++) {
+                    const t = i / n;
+                    ctx.beginPath();
+                    ctx.moveTo(this.history[i-1].x, this.history[i-1].y);
+                    ctx.lineTo(this.history[i].x, this.history[i].y);
+                    ctx.strokeStyle = this.lit
+                        ? `rgba(160,220,255,${0.88 * t})`
+                        : `rgba(100,180,255,${0.30 * t})`;
+                    ctx.lineWidth = (this.lit ? 2.8 : 1.2) * t;
+                    ctx.lineCap   = 'round';
+                    ctx.stroke();
+                }
+                ctx.shadowBlur  = this.lit ? 24 : 9;
+                ctx.shadowColor = this.color;
+                ctx.globalAlpha = this.lit ? 1.0 : 0.70;
+                ctx.fillStyle   = '#ffffff';
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.lit ? this.size * 1.9 : this.size, 0, Math.PI*2);
+                ctx.fill();
+                ctx.shadowBlur = 0; ctx.globalAlpha = 1;
+            }
+        }
+
+        function resize() {
+            width  = canvas.width  = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+            mouseX = width / 2; mouseY = height / 2;
+            innerR   = Math.min(width, height) * 0.09;
+            stars    = Array.from({ length: STAR_COUNT    }, () => new VortexStar());
+            shooters = Array.from({ length: SHOOTER_COUNT }, () => new ShootingStar());
+            comets   = Array.from({ length: COMET_COUNT   }, () => new Comet());
+        }
+
+        const _reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        let _particleRunning = true;
+
+        document.addEventListener('visibilitychange', () => {
+            if (document.hidden) {
+                _particleRunning = false;
+            } else {
+                _particleRunning = true;
+                animateStars(); // restart the loop cleanly
+            }
+        });
+
+        function animateStars() {
+            if (_reducedMotion || !_particleRunning) return;
+            ctx.clearRect(0, 0, width, height);
+            ctx.globalAlpha = 1;
+            const ms = performance.now();
+
+            // Zoom stars outward from centre — driven by actual camera depth, not raw scroll target
+            const sp   = window._camScrollZ || 0;
+            const zoom = 1 + sp * 2.2;
+            ctx.save();
+            ctx.translate(width / 2, height / 2);
+            ctx.scale(zoom, zoom);
+            ctx.translate(-width / 2, -height / 2);
+
+            stars.forEach(s => { s.update(ms); s.draw(); });
+            shooters.forEach(s => { s.update(); s.draw(); });
+            comets.forEach(c => { c.update(); c.draw(); });
+
+            // Absorption flashes at the event horizon
+            for (let i = absorptions.length - 1; i >= 0; i--) {
+                const a = absorptions[i];
+                const t = a.time / a.maxTime;
+                const r = 2 + (1 - t) * 10;
+                ctx.globalAlpha = t * 0.9;
+                const g = ctx.createRadialGradient(a.x, a.y, 0, a.x, a.y, r);
+                g.addColorStop(0,   'rgba(210,245,255,1)');
+                g.addColorStop(0.4, 'rgba(80,190,255,0.7)');
+                g.addColorStop(1,   'rgba(0,100,220,0)');
+                ctx.fillStyle = g;
+                ctx.beginPath();
+                ctx.arc(a.x, a.y, r, 0, Math.PI * 2);
+                ctx.fill();
+                a.time--;
+                if (a.time <= 0) absorptions.splice(i, 1);
+            }
+            ctx.globalAlpha = 1;
+
+            ctx.restore();
+
+            // Erase stars over the logo area before scroll — fades as camera flies in
+            const scrollP = window._camScrollZ || 0;
+            const maskAlpha = Math.max(0, 1 - scrollP * 4);
+            if (maskAlpha > 0) {
+                ctx.globalCompositeOperation = 'destination-out';
+                const maskGrd = ctx.createRadialGradient(width/2, height/2, innerR * 0.2, width/2, height/2, innerR * 1.25);
+                maskGrd.addColorStop(0,   `rgba(0,0,0,${maskAlpha})`);
+                maskGrd.addColorStop(0.7, `rgba(0,0,0,${maskAlpha * 0.85})`);
+                maskGrd.addColorStop(1,   'rgba(0,0,0,0)');
+                ctx.fillStyle = maskGrd;
+                ctx.beginPath();
+                ctx.arc(width/2, height/2, innerR * 1.25, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.globalCompositeOperation = 'source-over';
+            }
+
+            requestAnimationFrame(animateStars);
+        }
+
+        window.addEventListener('resize', resize);
+        window.addEventListener('mousemove', e => { mouseX = e.clientX; mouseY = e.clientY; });
+        // Click anywhere to launch a comet from the cursor
+        window.addEventListener('click', e => {
+            // First try to ignite the nearest dormant comet
+            let closest = null, bestD = 180;
+            comets.forEach(c => {
+                if (!c.lit && c.active) {
+                    const d = Math.sqrt((c.x - e.clientX)**2 + (c.y - e.clientY)**2);
+                    if (d < bestD) { bestD = d; closest = c; }
+                }
+            });
+            if (closest) {
+                closest.activate();
+            } else {
+                // Spawn a fresh comet right at the cursor and ignite it immediately
+                const nc = new Comet();
+                nc.x = e.clientX; nc.y = e.clientY;
+                nc.active = true; nc.timer = 0;
+                nc.activate();
+                comets.push(nc);
+                if (comets.length > COMET_COUNT + 8) comets.shift();
+            }
+        });
+        resize();
+        animateStars();
+
+        // Device-aware hint text
+        const hint = document.getElementById('hint');
+        const isTouch = window.matchMedia('(hover: none) and (pointer: coarse)').matches;
+        hint.textContent = isTouch ? 'tap · swipe up to explore' : 'hover · scroll to explore';
+    </script>
+
+    <!-- ── Three.js 3D logo (transparent overlay) ── -->
+    <script type="module">
+        import * as THREE from 'three';
+        import { GLTFLoader }      from 'three/addons/loaders/GLTFLoader.js';
+        import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+
+        const threeCanvas = document.getElementById('three-canvas');
+
+        const renderer = new THREE.WebGLRenderer({ canvas: threeCanvas, alpha: true, antialias: true });
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setClearColor(0x000000, 0);
+
+        const scene  = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 2000);
+        camera.position.set(0, 0, 3.5);
+
+        // Lights — brand-colour palette, visible at rest, brighter on hover
+        scene.add(new THREE.AmbientLight(0x1a4a7a, 3.5));
+        const key  = new THREE.PointLight(0x66bbff, 22); key.position.set(-2, 2.5, 2.5);   scene.add(key);
+        const fill = new THREE.PointLight(0x4499ff, 12); fill.position.set(2.5, 1, 1.5);    scene.add(fill);
+        const rim1 = new THREE.PointLight(0x66bbff, 18); rim1.position.set(0.5, 1.8, -2);  scene.add(rim1);
+        const rim2 = new THREE.PointLight(0x2255cc, 14); rim2.position.set(-0.5, 1.5, -2); scene.add(rim2);
+
+        // Narrow scan light — sweeps across the logo face like a photocopier/radar beam
+        // Short range (0.32) means only a thin vertical strip is lit at any moment
+        const scanLight = new THREE.PointLight(0x4499ff, 0, 0.32);
+        scene.add(scanLight);
+        let scanTimer    = 2.0;
+        let scanActive   = false;
+        let scanProgress = 0;
+        let scanDir      = 1;
+
+        // Idle pulse-flash light — fires on every 2nd idle pulse when not hovering
+        // Positioned slightly above and in front so it creates visible depth/shadows
+        const pulseFlashLight = new THREE.PointLight(0xaaddff, 0, 0);
+        pulseFlashLight.position.set(0, 0.35, 2.0);
+        scene.add(pulseFlashLight);
+        let pulseFlashActive = false;
+        let pulseFlashT      = 0;
+        let pulseSineSign    = 1;  // tracks zero-crossings to count completed pulses
+        let pulseCounter     = 0;
+
+        // Mouse proximity light — follows cursor, fades in near centre
+        const mouseLight = new THREE.PointLight(0x4499ff, 0, 0);
+        mouseLight.position.set(0, 0, 1.5);
+        scene.add(mouseLight);
+
+        // Mouse → proximity tracking (drives all interactive behaviour)
+        const _ray = new THREE.Raycaster();
+        const _mouseTarget = new THREE.Vector3(0, 0, 1.5);
+        let proximity       = 0; // 0 = far, 1 = dead centre — smoothed each frame
+        let targetProximity = 0;
+
+        window.addEventListener('mousemove', e => {
+            const nx = (e.clientX / window.innerWidth)  * 2 - 1;
+            const ny = -(e.clientY / window.innerHeight) * 2 + 1;
+            _ray.setFromCamera({ x: nx, y: ny }, camera);
+            _ray.ray.at(2.0, _mouseTarget);
+            const screenDist = Math.sqrt(
+                (e.clientX - window.innerWidth  / 2) ** 2 +
+                (e.clientY - window.innerHeight / 2) ** 2
+            );
+            const hoverR = Math.min(window.innerWidth, window.innerHeight) * 0.22;
+            targetProximity = Math.max(0, 1 - screenDist / hoverR);
+        });
+
+        // Subtle env map so clearcoat has something to reflect
+        const pmrem = new THREE.PMREMGenerator(renderer);
+        pmrem.compileEquirectangularShader();
+        scene.environment = pmrem.fromScene(new RoomEnvironment()).texture;
+        scene.environmentIntensity = 0.05;
+        pmrem.dispose();
+
+        // ── Animation constants ──
+        const IDLE_AMP  = 0.12,  IDLE_FREQ  = 0.50, IDLE_STAG  = 0.38;
+        const PULSE_AMP = 0.34,  PULSE_FREQ = 0.62, PULSE_STAG = 0.45;
+
+        const rings = [];
+        const logoMaterials = [];   // non-ring materials (sparkles etc.)
+        const _idleColor    = new THREE.Color('#26b2db');
+        const _hoverColor   = new THREE.Color('#76e0fa');
+        const _ringWorldPos = new THREE.Vector3();
+        let animTime = 0;
+
+        // ── Scroll fly-through state ──
+        let scrollTarget   = 0;   // 0 = intro  1 = fully inside
+        let scrollProgress = 0;
+
+        // Dismiss loading screen once GLB is ready
+        function dismissLoader() {
+            const ls = document.getElementById('loading-screen');
+            ls.classList.add('hidden');
+            setTimeout(() => ls.remove(), 900);
+        }
+
+        new GLTFLoader().load('./logo_3d_optimized.glb', gltf => {
+            const model  = gltf.scene;
+            const box    = new THREE.Box3().setFromObject(model);
+            const centre = box.getCenter(new THREE.Vector3());
+            const size   = box.getSize(new THREE.Vector3()).length();
+            model.position.sub(centre);
+            model.scale.setScalar(0.48 / size);
+            scene.add(model);
+
+            dismissLoader();
+
+            let i = 0;
+            model.traverse(child => {
+                if (child.isMesh && child.material) {
+                    const m = child.material;
+                    // Strip every Blender-baked map so they can't override our colour
+                    m.map          = null;
+                    m.normalMap    = null;
+                    m.roughnessMap = null;
+                    m.metalnessMap = null;
+                    m.emissiveMap  = null;
+                    m.aoMap        = null;
+                    m.color.set('#26b2db');
+                    m.emissive.set('#26b2db');
+                    m.emissiveIntensity = 0.60;
+                    m.roughness  = 0.05;
+                    m.metalness  = 0.40;
+                    m.needsUpdate = true;
+                    if (child.name.startsWith('Curve')) {
+                        // Clone so each ring can fade independently during scroll
+                        const ringMat = m.clone();
+                        ringMat.transparent = true;
+                        ringMat.opacity     = 1;
+                        child.material      = ringMat;
+                        rings.push({ mesh: child, baseZ: child.position.z, mat: ringMat });
+                        i++;
+                    } else {
+                        logoMaterials.push(m); // sparkles + other non-ring meshes
+                    }
+                }
+            });
+        });
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        // ── GPU Star Field ──
+        (function () {
+            const COUNT = 9000;
+            const pos = new Float32Array(COUNT * 3);
+            const col = new Float32Array(COUNT * 3);
+            for (let i = 0; i < COUNT; i++) {
+                pos[i*3]   = (Math.random() - 0.5) * 800;
+                pos[i*3+1] = (Math.random() - 0.5) * 400;
+                pos[i*3+2] = Math.random() * -700 + 50; // Z: +50 to -650
+                const t = Math.random();
+                // Colour palette: white → cyan → blue
+                col[i*3]   = 0.65 + t * 0.35;
+                col[i*3+1] = 0.78 + t * 0.22;
+                col[i*3+2] = 0.90 + t * 0.10;
+            }
+            const geo = new THREE.BufferGeometry();
+            geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+            geo.setAttribute('color',    new THREE.BufferAttribute(col, 3));
+            const mat = new THREE.PointsMaterial({
+                size: 0.55, sizeAttenuation: true,
+                vertexColors: true, transparent: true, opacity: 0.82,
+                depthWrite: false
+            });
+            scene.add(new THREE.Points(geo, mat));
+        })();
+
+        // ── Procedural Planets ──
+        const planetVS = `
+            varying vec2 vUv;
+            varying vec3 vNormal;
+            void main() {
+                vUv = uv;
+                vNormal = normalize(normalMatrix * normal);
+                gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+            }
+        `;
+        const planetFS = `
+            uniform float uTime;
+            uniform vec3  uCol1;
+            uniform vec3  uCol2;
+            uniform vec3  uCol3;
+            varying vec2  vUv;
+            varying vec3  vNormal;
+            void main() {
+                float n  = sin(vUv.x * 11.0 + uTime * 0.22) * cos(vUv.y * 7.0 - uTime * 0.17)
+                         + sin(vUv.x * 5.5  - uTime * 0.11 + vUv.y * 9.0) * 0.55;
+                n = n * 0.5 + 0.5;
+                vec3 color = mix(uCol1, uCol2, n);
+                color = mix(color, uCol3, smoothstep(0.55, 0.85, n));
+                vec3 light = normalize(vec3(0.7, 0.5, 0.8));
+                float diff = dot(vNormal, light) * 0.5 + 0.5;
+                float limb = pow(max(0.0, dot(vNormal, vec3(0.0, 0.0, 1.0))), 0.35);
+                color *= diff * (0.45 + 0.55 * limb);
+                gl_FragColor = vec4(color, 1.0);
+            }
+        `;
+
+        function makePlanet(cfg) {
+            const grp = new THREE.Group();
+            grp.position.set(cfg.x, cfg.y, cfg.z);
+
+            // Body
+            const bodyMat = new THREE.ShaderMaterial({
+                vertexShader: planetVS,
+                fragmentShader: planetFS,
+                uniforms: {
+                    uTime: { value: 0 },
+                    uCol1: { value: new THREE.Color(cfg.c1) },
+                    uCol2: { value: new THREE.Color(cfg.c2) },
+                    uCol3: { value: new THREE.Color(cfg.c3) },
+                }
+            });
+            grp.add(new THREE.Mesh(new THREE.SphereGeometry(cfg.r, 56, 56), bodyMat));
+
+            // Atmosphere
+            const atmMat = new THREE.MeshBasicMaterial({
+                color: cfg.atm, transparent: true, opacity: 0.13,
+                side: THREE.BackSide, blending: THREE.AdditiveBlending, depthWrite: false
+            });
+            grp.add(new THREE.Mesh(new THREE.SphereGeometry(cfg.r * 1.20, 32, 32), atmMat));
+
+            // Halo glow ring
+            const haloMat = new THREE.MeshBasicMaterial({
+                color: cfg.atm, transparent: true, opacity: 0.06,
+                side: THREE.BackSide, blending: THREE.AdditiveBlending, depthWrite: false
+            });
+            grp.add(new THREE.Mesh(new THREE.SphereGeometry(cfg.r * 1.55, 24, 24), haloMat));
+
+            // Ring
+            if (cfg.ring) {
+                const ringMat = new THREE.MeshBasicMaterial({
+                    color: cfg.ring, transparent: true, opacity: 0.28,
+                    side: THREE.DoubleSide, depthWrite: false
+                });
+                const ringMesh = new THREE.Mesh(new THREE.TorusGeometry(cfg.r * 1.9, 0.055, 6, 80), ringMat);
+                ringMesh.rotation.x = Math.PI * 0.38 + (cfg.ringTilt || 0);
+                grp.add(ringMesh);
+                const ring2Mat = new THREE.MeshBasicMaterial({
+                    color: cfg.ring, transparent: true, opacity: 0.12,
+                    side: THREE.DoubleSide, depthWrite: false
+                });
+                const ring2 = new THREE.Mesh(new THREE.TorusGeometry(cfg.r * 2.35, 0.03, 6, 80), ring2Mat);
+                ring2.rotation.x = ringMesh.rotation.x;
+                grp.add(ring2);
+            }
+
+            scene.add(grp);
+            return { grp, bodyMat };
+        }
+
+        // Planets placed in completely different DIRECTIONS — never visible together
+        const planets = [
+            makePlanet({ x: 38,  y: 10,  z: -80, r: 2.5, ring: true, ringTilt:  0.40,
+                c1: '#020c1e', c2: '#0a2860', c3: '#1a6aee', atm: 0x1155ff, ring: 0x2266ee }),
+            makePlanet({ x: -42, y: -12, z: -80, r: 2.8, ring: true, ringTilt: -0.30,
+                c1: '#0d0420', c2: '#2a0858', c3: '#8822ee', atm: 0x6622ff, ring: 0x8833cc }),
+        ];
+
+        // Camera waypoints — sp = scrollProgress - 1  (0 = hero exit … 4 = return)
+        // Planets at X=±38 are invisible during straight dive (FOV half-width ~16u at that depth)
+        const SPACE_WP = [
+            { pos: new THREE.Vector3(  0,   0,  -2.5), look: new THREE.Vector3(  0,  0, -25) }, // sp=0 exit hero — straight ahead
+            { pos: new THREE.Vector3(  2,   1,  -42),  look: new THREE.Vector3(  2,  0, -70) }, // sp=1 deep dive  — no planets visible
+            { pos: new THREE.Vector3( 15,   4,  -52),  look: new THREE.Vector3( 38, 10, -78) }, // sp=2 planet 1   — swing right
+            { pos: new THREE.Vector3(-18,  -5,  -52),  look: new THREE.Vector3(-42,-12, -78) }, // sp=3 planet 2   — swing left
+            { pos: new THREE.Vector3( 10,   6,  -48),  look: new THREE.Vector3( 38, 10, -78) }, // sp=4 return     — back to planet 1
+        ];
+        const _wpCamPos  = new THREE.Vector3();
+        const _wpLookAt  = new THREE.Vector3();
+        const _tmpQuat   = new THREE.Quaternion();
+        const _tmpCam    = new THREE.PerspectiveCamera();
+        const _heroLook  = new THREE.Vector3(0, 0, 0); // hero always looks at origin
+
+        // Hide planets until camera enters space
+        planets.forEach(p => { p.grp.visible = false; });
+
+        // DOM layer refs
+        const planet1Layer = document.getElementById('planet-1-layer');
+        const planet2Layer = document.getElementById('planet-2-layer');
+        const spaceNavHint = document.getElementById('space-nav-hint');
+        const MAX_SCROLL = 5; // hero(0→1) + deep dive + planet1 + planet2 + return
+
+        let scrollLocked = false;
+
+        function flyLock() {
+            scrollLocked = true;
+            const check = setInterval(() => {
+                if (Math.abs(scrollProgress - scrollTarget) < 0.03) { scrollLocked = false; clearInterval(check); }
+            }, 100);
+        }
+
+        window.addEventListener('wheel', e => {
+            e.preventDefault();
+            if (scrollLocked) return;
+            if (e.deltaY > 0 && scrollTarget < MAX_SCROLL) { scrollTarget++; flyLock(); }
+            else if (e.deltaY < 0 && scrollTarget > 0) { scrollTarget--; flyLock(); }
+        }, { passive: false });
+
+        let _touchStartY = null;
+        window.addEventListener('touchstart', e => {
+            _touchStartY = e.touches[0].clientY;
+        }, { passive: true });
+        window.addEventListener('touchend', e => {
+            if (_touchStartY === null) return;
+            const dy = _touchStartY - e.changedTouches[0].clientY;
+            _touchStartY = null;
+            if (scrollLocked || Math.abs(dy) < 40) return;
+            if (dy > 0 && scrollTarget < MAX_SCROLL) { scrollTarget++; flyLock(); }
+            else if (dy < 0 && scrollTarget > 0) { scrollTarget--; flyLock(); }
+        }, { passive: true });
+
+        // Touch mousemove proxy — drives comet ignition and proximity on touch devices
+        window.addEventListener('touchmove', e => {
+            const t = e.touches[0];
+            mouseX = t.clientX; mouseY = t.clientY;
+        }, { passive: true });
+
+        // Click on logo triggers scroll fly-through (hero only)
+        window.addEventListener('click', () => {
+            if (scrollTarget > 1 || targetProximity < 0.05 || scrollLocked) return;
+            scrollTarget = scrollTarget < 0.5 ? 1 : 0;
+            scrollLocked = true;
+            const check = setInterval(() => {
+                if (Math.abs(scrollProgress - scrollTarget) < 0.03) {
+                    scrollLocked = false;
+                    clearInterval(check);
+                }
+            }, 100);
+        });
+
+
+        const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        const isTouch = window.matchMedia('(hover: none) and (pointer: coarse)').matches;
+        const hintEl     = document.getElementById('hint');
+        const _particleCV = document.getElementById('particleCanvas');
+        let   lastScrollState = -1;
+        let   _threeRunning   = true;
+
+        document.addEventListener('visibilitychange', () => {
+            if (document.hidden) {
+                _threeRunning = false;
+            } else {
+                _threeRunning = true;
+                clock.getDelta(); // discard the huge accumulated delta from hidden time
+                animate();
+            }
+        });
+
+        const clock = new THREE.Clock();
+        function animate() {
+            if (!_threeRunning) return;
+            requestAnimationFrame(animate);
+            const dt = clock.getDelta();
+            animTime += dt;
+
+            // Scroll boosts proximity so logo lights up before fly-through begins
+            targetProximity = Math.max(targetProximity, scrollTarget * Math.max(0, 1 - scrollProgress * 2));
+
+            // Smoothly chase target proximity (ease in fast, ease out slower)
+            const lerpSpeed = targetProximity > proximity ? 0.06 : 0.025;
+            proximity += (targetProximity - proximity) * lerpSpeed;
+
+            // Skip scan beam + pulse flash when user prefers reduced motion
+            if (prefersReducedMotion) { renderer.render(scene, camera); return; }
+
+            // Narrow scan beam — moves linearly left→right (or right→left) very close to the logo face
+            // Limited range means only a thin vertical strip of the logo is lit at any moment
+            scanTimer -= dt;
+            if (scanTimer <= 0 && !scanActive) {
+                scanActive    = true;
+                scanProgress  = 0;
+                scanDir       = Math.random() < 0.5 ? 1 : -1;
+                scanTimer     = Math.random() * 3 + 3;
+            }
+            if (scanActive) {
+                scanProgress += dt / 2.2; // 2.2 s to cross the full logo width
+                const x    = scanDir * (scanProgress * 2 - 1) * 0.65; // -0.65 → +0.65
+                const fade = Math.sin(scanProgress * Math.PI);         // ramp in/out
+                scanLight.position.set(x, 0, 0.18);                   // very close to logo face
+                scanLight.intensity = fade * 55;
+                if (scanProgress >= 1) { scanActive = false; scanLight.intensity = 0; }
+            }
+
+            // Fire a soft light-up on every idle pulse, from a randomly chosen angle each time
+            const sineNow = Math.sin(IDLE_FREQ * 2 * Math.PI * animTime);
+            if (pulseSineSign < 0 && sineNow >= 0 && !pulseFlashActive && proximity < 0.12) {
+                pulseFlashActive = true;
+                pulseFlashT      = 0;
+                // True random angle — full sphere around the logo every flash
+                const a    = Math.random() * Math.PI * 2;          // any horizontal direction
+                const dist = 2.0 + Math.random() * 1.2;           // distance from origin
+                const yPos = (Math.random() - 0.4) * 4.0;         // -1.6 … +2.4 (below → high above)
+                pulseFlashLight.position.set(
+                    Math.cos(a) * dist,                            // left / right
+                    yPos,                                          // below / above
+                    Math.sin(a) * dist * 0.45 + 0.7               // behind / in front (mostly front)
+                );
+            }
+            pulseSineSign = sineNow < 0 ? -1 : 1;
+
+            if (pulseFlashActive) {
+                pulseFlashT += dt;
+                const dur = 1.4;
+                const t   = pulseFlashT / dur;
+                // Asymmetric ease: quick soft ramp-in, long gentle fade-out
+                const bell = t < 0.25
+                    ? Math.sin((t / 0.25) * Math.PI * 0.5)
+                    : Math.cos(((t - 0.25) / 0.75) * Math.PI * 0.5);
+                pulseFlashLight.intensity = Math.max(0, bell * 220);
+                logoMaterials.forEach(m => { m.emissiveIntensity = 1.90 + bell * 6.0; });
+                if (pulseFlashT >= dur) { pulseFlashActive = false; pulseFlashLight.intensity = 0; }
+            }
+
+            // All scene lights — gentle hover boost, kept low to avoid oversaturation to yellow
+            key.intensity   = 48 + proximity * 10;
+            fill.intensity  = 28 + proximity *  8;
+            rim1.intensity  = 36 + proximity * 10;
+            rim2.intensity  = 28 + proximity *  6;
+            mouseLight.position.lerp(_mouseTarget, 0.10);
+            mouseLight.intensity = proximity * 14;
+
+            // Smooth scroll progress
+            scrollProgress += (scrollTarget - scrollProgress) * 0.055;
+
+            // ── Camera ──
+            const inHero = scrollProgress < 1.15;
+
+            if (scrollProgress <= 1.0) {
+                // Hero fly-through
+                const hoverZ = 3.5 - proximity * 0.45 * (1 - scrollProgress);
+                const flyZ   = 3.5 - scrollProgress * 6.0;
+                const tZ     = hoverZ + (flyZ - hoverZ) * scrollProgress;
+                // Snap X/Y back to center — faster lerp so logo recenters quickly on return
+                camera.position.x += (0  - camera.position.x) * 0.10;
+                camera.position.y += (0  - camera.position.y) * 0.10;
+                camera.position.z += (tZ - camera.position.z) * 0.06;
+                // Reset camera rotation to look at logo origin
+                _tmpCam.position.copy(camera.position);
+                _tmpCam.up.set(0, 1, 0);
+                _tmpCam.lookAt(_heroLook);
+                camera.quaternion.slerp(_tmpCam.quaternion, 0.10);
+                // Keep planets hidden in hero
+                planets.forEach(p => { p.grp.visible = false; });
+            } else {
+                // Space travel — show planets, interpolate between waypoints
+                planets.forEach(p => { p.grp.visible = true; });
+                const sp  = scrollProgress - 1.0;
+                const i0  = Math.min(Math.floor(sp), SPACE_WP.length - 2);
+                const raw = sp - i0;
+                const et  = raw * raw * (3 - 2 * raw); // smoothstep
+
+                _wpCamPos.lerpVectors(SPACE_WP[i0].pos, SPACE_WP[i0 + 1].pos, et);
+                _wpLookAt.lerpVectors(SPACE_WP[i0].look, SPACE_WP[i0 + 1].look, et);
+
+                camera.position.lerp(_wpCamPos, 0.055);
+                _tmpCam.position.copy(camera.position);
+                _tmpCam.up.set(0, 1, 0);
+                _tmpCam.lookAt(_wpLookAt);
+                camera.quaternion.slerp(_tmpCam.quaternion, 0.06);
+            }
+
+            window._camScrollZ     = Math.max(0, Math.min(1, (3.5 - Math.min(camera.position.z, 3.5)) / 6.0));
+            window._proximity      = proximity;
+            window._scrollProgress = scrollProgress;
+
+            // ── Planet DOM layers ──
+            // sp = scrollProgress - 1  (planet1 at sp=2, planet2 at sp=3, return at sp=4)
+            const sp2 = scrollProgress - 1.0;
+            const p1v = (sp2 > 1.72 && sp2 < 2.38) || (sp2 > 3.72 && sp2 < 4.38); // arrive + return
+            const p2v =  sp2 > 2.72 && sp2 < 3.38;
+            planet1Layer.classList.toggle('visible', p1v);
+            planet2Layer.classList.toggle('visible', p2v);
+            planet1Layer.setAttribute('aria-hidden', String(!p1v));
+            planet2Layer.setAttribute('aria-hidden', String(!p2v));
+            spaceNavHint.classList.toggle('visible', scrollProgress > 1.05 && !p1v && !p2v);
+
+            // ── Planet rotation + shader time ──
+            planets.forEach((p, i) => {
+                p.grp.rotation.y += 0.0015 + i * 0.0005;
+                p.bodyMat.uniforms.uTime.value = animTime;
+            });
+
+            // ── Logo materials + rings — only when near hero ──
+            if (inHero) {
+            logoMaterials.forEach(m => {
+                m.emissive.lerpColors(_idleColor, _hoverColor, proximity);
+                m.emissiveIntensity = 1.90 + proximity * 2.00;
+            });
+
+            // Animation parameters blend with proximity
+            const amp  = IDLE_AMP  + (PULSE_AMP  - IDLE_AMP)  * proximity;
+            const freq = IDLE_FREQ + (PULSE_FREQ - IDLE_FREQ) * proximity;
+            const stag = IDLE_STAG + (PULSE_STAG - IDLE_STAG) * proximity;
+
+            // Wave amplitude fades to zero as scroll starts (rings spread instead)
+            const waveAmp = amp * Math.max(0, 1 - scrollProgress * 4);
+
+            rings.forEach((r, idx) => {
+                // Z: idle wave → scroll spread (front ring stays, each deeper ring steps back)
+                const waveZ   = r.baseZ + waveAmp * Math.sin(freq * 2 * Math.PI * animTime - idx * stag);
+                const spreadZ = r.baseZ - idx * 0.65 * scrollProgress;
+                r.mesh.position.z = waveZ * (1 - scrollProgress) + spreadZ * scrollProgress;
+
+                // Fade each ring as the camera passes through it
+                r.mesh.getWorldPosition(_ringWorldPos);
+                const ahead = camera.position.z - _ringWorldPos.z;   // > 0 = ring ahead of cam
+                const ringOpacity = Math.max(0, Math.min(1, ahead / 0.30));
+                r.mat.opacity = ringOpacity;
+
+                // Emissive — same colour logic as logoMaterials
+                r.mat.emissive.lerpColors(_idleColor, _hoverColor, proximity);
+                r.mat.emissiveIntensity = (1.90 + proximity * 2.00) * ringOpacity;
+            });
+            } // end inHero guard
+
+            // Update hint per stage
+            if (scrollTarget !== lastScrollState) {
+                lastScrollState = scrollTarget;
+                const hints = [
+                    isTouch ? 'tap · swipe up to explore' : 'hover · scroll to explore',
+                    isTouch ? 'swipe up to enter deep space' : 'scroll to enter deep space',
+                    '', // deep dive — no hint, let the stars speak
+                    '', // planet 1 arrival
+                    '', // planet 2 arrival
+                    '', // return
+                ];
+                if (hintEl) hintEl.textContent = hints[scrollTarget] || '';
+            }
+
+            // Fade particle canvas as we enter space
+            _particleCV.style.opacity = Math.max(0, 1 - Math.max(0, scrollProgress - 0.85) * 5).toFixed(3);
+
+            renderer.render(scene, camera);
+        }
+        animate();
+    </script>
+
+
+    <!-- ── Space navigation hint ── -->
+    <div id="space-nav-hint">scroll to continue the journey</div>
+
+    <!-- ── Planet 1 — Our Work ── -->
+    <div id="planet-1-layer" class="planet-layer" aria-hidden="true">
+        <p class="pl-eyebrow">Planet 01</p>
+        <h2 class="pl-title">Our Work</h2>
+        <p class="pl-sub">Motion design, immersive 3D experiences, and interactive worlds built for brands that want to be remembered.</p>
+        <button class="pl-cta">Explore Projects</button>
+    </div>
+
+    <!-- ── Planet 2 — Services ── -->
+    <div id="planet-2-layer" class="planet-layer" aria-hidden="true">
+        <p class="pl-eyebrow">Planet 02</p>
+        <h2 class="pl-title">Services</h2>
+        <p class="pl-sub">3D production, brand identity, interactive web, motion systems — everything to bring your vision into three dimensions.</p>
+        <button class="pl-cta">View Services</button>
+    </div>
+
+    <!-- ── Studio name glow tracker ── -->
+    <script>
+    (function () {
+        const nameEl  = document.getElementById('studio-name');
+        if (!nameEl) return;
+        const snWords = Array.from(nameEl.querySelectorAll('.sn-w'));
+        let lastProx = -1, lastSp = -1;
+        function tick() {
+            const prox = window._proximity || 0;
+            const sp   = window._scrollProgress || 0;
+            if (Math.abs(prox - lastProx) > 0.008 || Math.abs(sp - lastSp) > 0.005) {
+                lastProx = prox; lastSp = sp;
+                nameEl.style.opacity = Math.max(0, 1 - sp * 5).toFixed(3);
+                const g1 = (4  + prox * 10).toFixed(1);
+                const g2 = (12 + prox * 18).toFixed(1);
+                const g3 = (28 + prox * 30).toFixed(1);
+                const a1 = (0.80 + prox * 0.20).toFixed(2);
+                const a2 = (0.45 + prox * 0.35).toFixed(2);
+                const a3 = (0.20 + prox * 0.20).toFixed(2);
+                const glow = `drop-shadow(0 0 ${g1}px rgba(38,178,219,${a1})) drop-shadow(0 0 ${g2}px rgba(38,178,219,${a2})) drop-shadow(0 0 ${g3}px rgba(38,178,219,${a3}))`;
+                for (let i = 0; i < snWords.length; i++) snWords[i].style.filter = glow;
+            }
+            requestAnimationFrame(tick);
+        }
+        tick();
+    })();
+    </script>
+
+</body>

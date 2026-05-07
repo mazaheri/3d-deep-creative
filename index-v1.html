@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Deep Creative Studio — Hero Light</title>
+    <title>Deep Creative Studio — 3D Creative Agency</title>
     <meta name="description" content="Deep Creative Studio — a 3D creative agency crafting immersive digital experiences, motion design, and interactive web worlds.">
     <meta property="og:title" content="Deep Creative Studio">
     <meta property="og:description" content="Immersive 3D digital experiences and motion design.">
@@ -80,6 +80,15 @@
                     drop-shadow(0 0 1px rgba(118, 224, 250, 0.40));
         }
 
+        /* Layer 3 — star particles, in front of logo */
+        #particleCanvas {
+            position: fixed;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            z-index: 3;
+            pointer-events: none;
+            mix-blend-mode: screen;
+        }
 
         /* Layer 4 — text UI */
         #ui-layer {
@@ -247,6 +256,8 @@
     <!-- Three.js 3D logo -->
     <canvas id="three-canvas" aria-hidden="true"></canvas>
 
+    <!-- Star / meteor background (decorative) -->
+    <canvas id="particleCanvas" aria-hidden="true"></canvas>
 
     <!-- Studio name — below the 3D logo -->
     <div id="studio-name" aria-label="Deep Creative Studio">
@@ -266,7 +277,455 @@
         <p id="hint"><!-- text set by JS based on device --></p>
     </div>
 
+    <!-- ── Vortex galaxy particle system ── -->
+    <script>
+        const canvas = document.getElementById('particleCanvas');
+        const ctx = canvas.getContext('2d');
 
+        let width, height, innerR;
+        let stars = [], shooters = [], comets = [];
+        let mouseX = 0, mouseY = 0;
+        let absorptions = [];
+
+        const STAR_COUNT    = 1000;
+        const SHOOTER_COUNT = 12;
+        const COMET_COUNT   = 5;
+        const DISK_TILT     = 0.85;
+        const PULL_R        = 180; // px — wider mouse influence radius
+        const COLORS = ['#76e0fa','#26b2db','#009bfc','#005dbd','#ffffff','#4dcfee'];
+
+        class VortexStar {
+            constructor() { this.init(false); }
+            init(outerSpawn) {
+                const maxR     = Math.sqrt((width/2)**2 + (height/2)**2) * 1.05;
+                const GRAV_ZONE = Math.min(width, height) * 0.16;
+                // Always use the full-field distribution so density stays uniform forever.
+                // outerSpawn only controls whether the star fades in (avoids pop-in).
+                const t = Math.pow(Math.random(), 0.6);
+                this.baseR  = innerR + (maxR - innerR) * t;
+                this.r      = this.baseR;
+                this.angle  = Math.random() * Math.PI * 2;
+                this.size   = Math.random() * 2.4 + 1.1;
+                this.color  = COLORS[Math.floor(Math.random() * COLORS.length)];
+                this.baseOp = Math.random() * 0.35 + 0.65;
+                this.twinklePhase = Math.random() * Math.PI * 2;
+                this.twinkleRate  = Math.random() * 1.5 + 0.5;
+                this.pullOff  = 0;
+                this.fadeAlpha = outerSpawn ? 0 : 1;
+                this.ownOmega = 0.00225 * Math.sqrt(innerR / Math.max(innerR + 1, this.baseR));
+                this.caught   = this.baseR < GRAV_ZONE;
+                this.entryR   = this.caught ? this.baseR : null;
+                this.dead      = false;
+                this.deadTimer = 0;
+                this.resistance = Math.random(); // 0 = pulls in easily, 1 = fights and escapes
+                this.escaping   = false;
+                this.escapeV    = 0;
+            }
+            update(ms) {
+                const scrollP = window._camScrollZ || 0;
+                // Gravity zone expands as camera flies in — more stars get caught during scroll
+                const GRAV_ZONE = Math.min(width, height) * (0.16 + scrollP * 0.13);
+
+                // Dead — waiting in darkness; when timer expires a new star is born at outer edge
+                if (this.dead) {
+                    this.deadTimer--;
+                    if (this.deadTimer <= 0) {
+                        this.init(true); // new star appears far away, fades in slowly
+                    }
+                    return;
+                }
+
+                // Enter gravity zone — point of no return
+                if (!this.caught && this.baseR < GRAV_ZONE) {
+                    this.caught = true;
+                    this.entryR = this.baseR;
+                }
+
+                // During scroll, tidal pull drags all free stars gently inward
+                if (scrollP > 0 && !this.caught) {
+                    this.baseR -= scrollP * 0.35;
+                }
+
+                // Magnetic zone — resistant stars fight back but weaken over time
+                if (!this.caught) {
+                    const MAGNET_ZONE    = GRAV_ZONE * 1.7;
+                    const OUTER_DRAG_ZONE = GRAV_ZONE * 2.8;
+
+                    if (this.baseR < MAGNET_ZONE) {
+                        const t    = (MAGNET_ZONE - this.baseR) / (MAGNET_ZONE - GRAV_ZONE);
+                        const pull = Math.pow(t, 1.5) * 2.2;
+
+                        // No resistance during scroll — everything gets pulled in
+                        if (!this.escaping && this.resistance > 0.58 && t > 0.25 && scrollP < 0.05) {
+                            this.escaping = true;
+                            this.escapeV  = (this.resistance - 0.4) * 5.5 + pull * 1.8;
+                        }
+
+                        if (this.escaping && scrollP >= 0.05) {
+                            // Scroll started mid-escape — kill resistance immediately
+                            this.escaping = false;
+                            this.escapeV  = 0;
+                        }
+
+                        if (this.escaping) {
+                            this.escapeV -= pull * 0.55;
+                            this.escapeV  = Math.max(0, this.escapeV);
+                            this.baseR   += this.escapeV;
+
+                            if (this.escapeV <= 0) {
+                                this.escaping = false;
+                                this.caught   = true;
+                                this.entryR   = this.baseR;
+                            } else if (this.baseR >= MAGNET_ZONE) {
+                                this.escaping    = false;
+                                this.resistance  = Math.max(0, this.resistance - 0.20);
+                            }
+                        } else {
+                            this.baseR -= pull;
+                        }
+
+                    } else if (this.escapeV > 0) {
+                        // Outside magnet zone — still feel decreasing drag as they move away
+                        if (this.baseR < OUTER_DRAG_ZONE) {
+                            const tOuter = (OUTER_DRAG_ZONE - this.baseR) / (OUTER_DRAG_ZONE - MAGNET_ZONE);
+                            this.escapeV -= tOuter * 0.30;
+                            this.escapeV  = Math.max(0, this.escapeV);
+                        }
+                        this.baseR  += this.escapeV;
+                        this.escapeV *= 0.91;
+                        if (this.escapeV < 0.05) this.escapeV = 0;
+                    }
+                }
+
+                let omega;
+                if (!this.caught) {
+                    omega = this.ownOmega;
+                } else {
+                    const speedup = Math.pow(this.entryR / Math.max(innerR + 1, this.baseR), 1.5);
+                    omega = this.ownOmega * speedup;
+                    const factor = Math.pow(GRAV_ZONE / Math.max(this.baseR, innerR + 1), 2.0);
+                    // Spiral slower during scroll so you can see the animation as you fly through
+                    const spiralRate = 1 - scrollP * 0.55;
+                    this.baseR -= (0.28 + 0.18 * factor) * spiralRate;
+                }
+                this.angle += omega;
+
+                // Mouse nudge
+                const sx = width/2 + Math.cos(this.angle) * this.baseR;
+                const sy = height/2 + Math.sin(this.angle) * this.baseR * DISK_TILT;
+                const mdist = Math.sqrt((sx - mouseX)**2 + (sy - mouseY)**2);
+                if (mdist < PULL_R) {
+                    const f = (PULL_R - mdist) / PULL_R;
+                    this.pullOff = Math.min(this.pullOff + f * 4.5, 80);
+                    if (f > 0.25) this.baseR -= f * 0.5;
+                } else {
+                    this.pullOff *= 0.78;
+                }
+                if (!this.caught) {
+                    const pulled = this.baseR - this.pullOff;
+                    if (pulled <= GRAV_ZONE) {
+                        // Reaching the margin triggers vanishing — no sticking to logo border
+                        this.caught  = true;
+                        this.baseR   = GRAV_ZONE;
+                        this.entryR  = GRAV_ZONE;
+                        this.pullOff = 0;
+                        this.r       = GRAV_ZONE;
+                    } else {
+                        this.r = pulled;
+                    }
+                } else {
+                    this.r = this.baseR;
+                }
+
+                if (this.fadeAlpha < 1) this.fadeAlpha = Math.min(1, this.fadeAlpha + 0.01);
+
+                // Cross event horizon — star is consumed, new one spawns from outer edge immediately
+                if (this.baseR <= innerR + 2) {
+                    const absX = width/2 + Math.cos(this.angle) * innerR;
+                    const absY = height/2 + Math.sin(this.angle) * innerR * DISK_TILT;
+                    absorptions.push({ x: absX, y: absY, time: 28, maxTime: 28 });
+                    this.init(true); // spawn fresh star from outer edge right away
+                    return;
+                }
+
+                const eventFade = Math.min(1, Math.max(0, (this.baseR - innerR) / (innerR * 0.7)));
+                const edge      = Math.min(1, (this.baseR - innerR) / 50);
+                const twinkle   = 0.80 + 0.20 * Math.sin(ms * 0.001 * this.twinkleRate + this.twinklePhase);
+                this.opacity    = this.baseOp * edge * twinkle * eventFade * this.fadeAlpha;
+            }
+            draw() {
+                if (this.dead) return;
+                const x = width/2  + Math.cos(this.angle) * this.r;
+                const y = height/2 + Math.sin(this.angle) * this.r * DISK_TILT;
+                ctx.globalAlpha = Math.max(0, this.opacity);
+                ctx.fillStyle   = this.color;
+                if (this.caught) {
+                    const GRAV_ZONE = Math.min(width, height) * (0.16 + (window._camScrollZ || 0) * 0.13);
+                    // progress = 1 at gravity zone edge, 0 at event horizon
+                    const progress = Math.min(1, Math.max(0, (this.baseR - innerR) / (GRAV_ZONE - innerR)));
+                    const sizeFactor = Math.max(0.05, progress * progress);
+                    const stretch = 1 + (1 - progress) * 3.5;
+                    // Y starts equal to X at boundary (circle) and compresses as star falls in
+                    const yScale = Math.max(0.25, progress);
+                    const toCenter = Math.atan2(y - height/2, x - width/2);
+                    ctx.save();
+                    ctx.translate(x, y);
+                    ctx.rotate(toCenter);
+                    ctx.beginPath();
+                    ctx.ellipse(0, 0, this.size * sizeFactor * stretch, this.size * sizeFactor * yScale, 0, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.restore();
+                } else {
+                    ctx.beginPath();
+                    ctx.arc(x, y, this.size, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+            }
+        }
+
+        class ShootingStar {
+            constructor() { this.reset(true); }
+            reset(randomDelay = false) {
+                const spawnR = innerR * 4 + Math.random() * Math.min(width, height) * 0.35;
+                const spawnA = Math.random() * Math.PI * 2;
+                this.x = width  / 2 + Math.cos(spawnA) * spawnR;
+                this.y = height / 2 + Math.sin(spawnA) * spawnR * DISK_TILT;
+                const tangent = spawnA + Math.PI / 2 + (Math.random() - 0.5) * 0.6;
+                const speed   = Math.random() * 6 + 4;
+                this.vx = Math.cos(tangent) * speed;
+                this.vy = Math.sin(tangent) * speed;
+                this.history = [];
+                this.opacity  = 0;
+                this.size     = Math.random() * 1.2 + 1.0;
+                this.active   = false;
+                this.timer    = randomDelay ? Math.random() * 400 + 80 : Math.random() * 300 + 120;
+            }
+            update() {
+                if (!this.active) {
+                    if (--this.timer <= 0) { this.active = true; this.opacity = 0.9; }
+                    return;
+                }
+                this.history.push({ x: this.x, y: this.y });
+                if (this.history.length > 16) this.history.shift();
+                this.x += this.vx; this.y += this.vy;
+                this.opacity -= 0.008;
+                if (this.opacity <= 0 || this.x < -100 || this.x > width+100 || this.y < -100 || this.y > height+100)
+                    this.reset();
+            }
+            draw() {
+                if (!this.active || this.opacity <= 0 || this.history.length < 2) return;
+                ctx.beginPath();
+                ctx.moveTo(this.history[0].x, this.history[0].y);
+                this.history.forEach(p => ctx.lineTo(p.x, p.y));
+                ctx.lineTo(this.x, this.y);
+                ctx.strokeStyle = `rgba(200,230,255,${this.opacity * 0.6})`;
+                ctx.lineWidth   = this.size * 0.8;
+                ctx.lineCap     = 'round';
+                ctx.shadowBlur  = 12; ctx.shadowColor = '#aaddff';
+                ctx.stroke();
+                ctx.shadowBlur  = 0;
+                ctx.globalAlpha = this.opacity;
+                ctx.fillStyle   = '#ffffff';
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size * 0.8, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+
+        class Comet {
+            constructor() { this.spawn(true); }
+
+            spawn(randomDelay) {
+                const angle  = Math.random() * Math.PI * 2;
+                const r      = innerR * 3.5 + Math.random() * Math.min(width, height) * 0.32;
+                this.x       = width/2  + Math.cos(angle) * r;
+                this.y       = height/2 + Math.sin(angle) * r * DISK_TILT;
+                const tangent = angle + Math.PI / 2;
+                const spd    = 0.8 + Math.random() * 0.7;
+                this.vx      = Math.cos(tangent) * spd;
+                this.vy      = Math.sin(tangent) * spd * DISK_TILT;
+                this.history = [];
+                this.lit     = false;
+                this.size    = 2.2 + Math.random() * 1.2;
+                this.color   = ['#60e0ff','#a0d8ff','#ffe0a0','#c0d8ff'][Math.floor(Math.random()*4)];
+                this.active  = !randomDelay;
+                this.timer   = randomDelay ? Math.random() * 300 + 60 : 0;
+                this.life    = 0;
+            }
+
+            activate() {
+                if (this.lit) return;
+                this.lit = true;
+                const spd   = Math.sqrt(this.vx*this.vx + this.vy*this.vy);
+                const scale = (7 + Math.random() * 4) / Math.max(spd, 0.1);
+                this.vx *= scale;
+                this.vy *= scale;
+                const dx = width/2 - this.x, dy = height/2 - this.y;
+                const d  = Math.sqrt(dx*dx + dy*dy) + 1;
+                this.vx += dx/d * 2.5;
+                this.vy += dy/d * 2.5;
+            }
+
+            update() {
+                if (!this.active) { if (--this.timer <= 0) this.active = true; return; }
+                if (!this.lit) {
+                    const d = Math.sqrt((this.x - mouseX)**2 + (this.y - mouseY)**2);
+                    if (d < 90) this.activate();
+                }
+                this.history.push({ x: this.x, y: this.y });
+                const maxTail = this.lit ? 40 : 10;
+                if (this.history.length > maxTail) this.history.shift();
+                this.x += this.vx;
+                this.y += this.vy;
+                this.life++;
+                if (this.lit) {
+                    const dx = width/2 - this.x, dy = height/2 - this.y;
+                    const d  = Math.sqrt(dx*dx + dy*dy) + 1;
+                    this.vx += dx/d * 0.10;
+                    this.vy += dy/d * 0.10;
+                }
+                const off = this.x < -250 || this.x > width+250 || this.y < -250 || this.y > height+250;
+                if (off || (this.lit && this.life > 240)) this.spawn(false);
+            }
+
+            draw() {
+                if (!this.active || this.history.length < 2) return;
+                const n = this.history.length;
+                for (let i = 1; i < n; i++) {
+                    const t = i / n;
+                    ctx.beginPath();
+                    ctx.moveTo(this.history[i-1].x, this.history[i-1].y);
+                    ctx.lineTo(this.history[i].x, this.history[i].y);
+                    ctx.strokeStyle = this.lit
+                        ? `rgba(160,220,255,${0.88 * t})`
+                        : `rgba(100,180,255,${0.30 * t})`;
+                    ctx.lineWidth = (this.lit ? 2.8 : 1.2) * t;
+                    ctx.lineCap   = 'round';
+                    ctx.stroke();
+                }
+                ctx.shadowBlur  = this.lit ? 24 : 9;
+                ctx.shadowColor = this.color;
+                ctx.globalAlpha = this.lit ? 1.0 : 0.70;
+                ctx.fillStyle   = '#ffffff';
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.lit ? this.size * 1.9 : this.size, 0, Math.PI*2);
+                ctx.fill();
+                ctx.shadowBlur = 0; ctx.globalAlpha = 1;
+            }
+        }
+
+        function resize() {
+            width  = canvas.width  = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+            mouseX = width / 2; mouseY = height / 2;
+            innerR   = Math.min(width, height) * 0.09;
+            stars    = Array.from({ length: STAR_COUNT    }, () => new VortexStar());
+            shooters = Array.from({ length: SHOOTER_COUNT }, () => new ShootingStar());
+            comets   = Array.from({ length: COMET_COUNT   }, () => new Comet());
+        }
+
+        const _reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        let _particleRunning = true;
+
+        document.addEventListener('visibilitychange', () => {
+            if (document.hidden) {
+                _particleRunning = false;
+            } else {
+                _particleRunning = true;
+                animateStars(); // restart the loop cleanly
+            }
+        });
+
+        function animateStars() {
+            if (_reducedMotion || !_particleRunning) return;
+            ctx.clearRect(0, 0, width, height);
+            ctx.globalAlpha = 1;
+            const ms = performance.now();
+
+            // Zoom stars outward from centre — driven by actual camera depth, not raw scroll target
+            const sp   = window._camScrollZ || 0;
+            const zoom = 1 + sp * 2.2;
+            ctx.save();
+            ctx.translate(width / 2, height / 2);
+            ctx.scale(zoom, zoom);
+            ctx.translate(-width / 2, -height / 2);
+
+            stars.forEach(s => { s.update(ms); s.draw(); });
+            shooters.forEach(s => { s.update(); s.draw(); });
+            comets.forEach(c => { c.update(); c.draw(); });
+
+            // Absorption flashes at the event horizon
+            for (let i = absorptions.length - 1; i >= 0; i--) {
+                const a = absorptions[i];
+                const t = a.time / a.maxTime;
+                const r = 2 + (1 - t) * 10;
+                ctx.globalAlpha = t * 0.9;
+                const g = ctx.createRadialGradient(a.x, a.y, 0, a.x, a.y, r);
+                g.addColorStop(0,   'rgba(210,245,255,1)');
+                g.addColorStop(0.4, 'rgba(80,190,255,0.7)');
+                g.addColorStop(1,   'rgba(0,100,220,0)');
+                ctx.fillStyle = g;
+                ctx.beginPath();
+                ctx.arc(a.x, a.y, r, 0, Math.PI * 2);
+                ctx.fill();
+                a.time--;
+                if (a.time <= 0) absorptions.splice(i, 1);
+            }
+            ctx.globalAlpha = 1;
+
+            ctx.restore();
+
+            // Erase stars over the logo area before scroll — fades as camera flies in
+            const scrollP = window._camScrollZ || 0;
+            const maskAlpha = Math.max(0, 1 - scrollP * 4);
+            if (maskAlpha > 0) {
+                ctx.globalCompositeOperation = 'destination-out';
+                const maskGrd = ctx.createRadialGradient(width/2, height/2, innerR * 0.2, width/2, height/2, innerR * 1.25);
+                maskGrd.addColorStop(0,   `rgba(0,0,0,${maskAlpha})`);
+                maskGrd.addColorStop(0.7, `rgba(0,0,0,${maskAlpha * 0.85})`);
+                maskGrd.addColorStop(1,   'rgba(0,0,0,0)');
+                ctx.fillStyle = maskGrd;
+                ctx.beginPath();
+                ctx.arc(width/2, height/2, innerR * 1.25, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.globalCompositeOperation = 'source-over';
+            }
+
+            requestAnimationFrame(animateStars);
+        }
+
+        window.addEventListener('resize', resize);
+        window.addEventListener('mousemove', e => { mouseX = e.clientX; mouseY = e.clientY; });
+        // Click anywhere to launch a comet from the cursor
+        window.addEventListener('click', e => {
+            // First try to ignite the nearest dormant comet
+            let closest = null, bestD = 180;
+            comets.forEach(c => {
+                if (!c.lit && c.active) {
+                    const d = Math.sqrt((c.x - e.clientX)**2 + (c.y - e.clientY)**2);
+                    if (d < bestD) { bestD = d; closest = c; }
+                }
+            });
+            if (closest) {
+                closest.activate();
+            } else {
+                // Spawn a fresh comet right at the cursor and ignite it immediately
+                const nc = new Comet();
+                nc.x = e.clientX; nc.y = e.clientY;
+                nc.active = true; nc.timer = 0;
+                nc.activate();
+                comets.push(nc);
+                if (comets.length > COMET_COUNT + 8) comets.shift();
+            }
+        });
+        resize();
+        animateStars();
+
+        // Device-aware hint text
+        const hint = document.getElementById('hint');
+        const isTouch = window.matchMedia('(hover: none) and (pointer: coarse)').matches;
+        hint.textContent = isTouch ? 'tap · swipe up to explore' : 'hover · scroll to explore';
+    </script>
 
     <!-- ── Three.js 3D logo (transparent overlay) ── -->
     <script type="module">
@@ -342,207 +801,6 @@
         scene.environmentIntensity = 0.05;
         pmrem.dispose();
 
-        // ── GPU Star Field ──
-        // All effects (twinkle, mouse repulsion, sharp spikes) live in GLSL — zero CPU per frame
-        const _starCount = 6000;
-        {
-            const pos   = new Float32Array(_starCount * 3);
-            const col   = new Float32Array(_starCount * 3);
-            const sizes = new Float32Array(_starCount);
-
-            for (let i = 0; i < _starCount; i++) {
-                const r     = 4 + Math.pow(Math.random(), 0.5) * 55;
-                const theta = Math.random() * Math.PI * 2;
-                const phi   = Math.acos(2 * Math.random() - 1);
-                pos[i*3]   = r * Math.sin(phi) * Math.cos(theta);
-                pos[i*3+1] = r * Math.sin(phi) * Math.sin(theta) * 0.55;
-                pos[i*3+2] = r * Math.cos(phi);
-                const t    = Math.random();
-                col[i*3]   = 0.62 + t * 0.38;
-                col[i*3+1] = 0.78 + t * 0.22;
-                col[i*3+2] = 0.92 + t * 0.08;
-                sizes[i]   = 0.28 + Math.random() * 1.1;
-            }
-
-            const geo = new THREE.BufferGeometry();
-            geo.setAttribute('position', new THREE.BufferAttribute(pos,   3));
-            geo.setAttribute('color',    new THREE.BufferAttribute(col,   3));
-            geo.setAttribute('size',     new THREE.BufferAttribute(sizes, 1));
-
-            window._starMat = new THREE.ShaderMaterial({
-                vertexColors: true,
-                transparent: true,
-                depthWrite: false,
-                uniforms: {
-                    uTime:       { value: 0 },
-                    uMouseWorld: { value: new THREE.Vector3(999, 999, 999) },
-                },
-                vertexShader: `
-                    attribute float size;
-                    varying   vec3  vColor;
-                    varying   float vPointSize;
-                    varying   float vTwinkle;
-                    uniform   float uTime;
-                    uniform   vec3  uMouseWorld;
-
-                    void main() {
-                        vColor = color;
-
-                        // Per-star seed from position
-                        float seed = position.x * 13.7 + position.y * 7.3 + position.z * 4.1;
-
-                        // Twinkle — each star has its own frequency
-                        vTwinkle = 0.70 + 0.30 * sin(uTime * (1.4 + mod(abs(seed), 1.9)) + seed);
-
-                        // Mouse repulsion — GPU only, no CPU loop needed
-                        vec3  toMouse = position - uMouseWorld;
-                        float mDist   = length(toMouse.xy);
-                        float repel   = smoothstep(3.8, 0.0, mDist) * 1.4;
-                        vec3  pos     = position + normalize(toMouse + vec3(0.001)) * repel;
-
-                        vec4  mv      = modelViewMatrix * vec4(pos, 1.0);
-                        float camDist = -mv.z;
-                        gl_PointSize  = size * vTwinkle * (300.0 / camDist);
-                        vPointSize    = gl_PointSize;
-                        gl_Position   = projectionMatrix * mv;
-                    }
-                `,
-                fragmentShader: `
-                    varying vec3  vColor;
-                    varying float vPointSize;
-                    varying float vTwinkle;
-
-                    void main() {
-                        vec2  uv = gl_PointCoord * 2.0 - 1.0;
-                        float r  = length(uv);
-                        if (r > 1.0) discard;
-
-                        // 4-point diffraction spikes (sharp star shape)
-                        float angle  = atan(uv.y, uv.x);
-                        float spikes = pow(abs(sin(angle * 2.0)), 10.0);
-                        float spike_alpha = spikes * smoothstep(1.0, 0.05, r) * 0.90;
-
-                        // Soft glowing core + wide glow halo
-                        float core = smoothstep(0.40, 0.0, r);
-                        float halo = smoothstep(1.0,  0.4, r) * 0.15;
-
-                        // Near/bright stars (larger pointSize) get sharp spikes
-                        // Distant stars stay as soft glowing blobs
-                        float sharpness = smoothstep(2.5, 9.0, vPointSize);
-                        float alpha = halo + mix(core * 0.75, core + spike_alpha, sharpness);
-
-                        gl_FragColor = vec4(vColor, alpha * vTwinkle);
-                    }
-                `
-            });
-
-            window._starMesh = new THREE.Points(geo, window._starMat);
-            scene.add(window._starMesh);
-        }
-
-        // ── Comet system ──
-        // 3 comet slots × 13 segments each = 39 GPU points total.
-        // Head + tail positions computed entirely in GLSL from 3 uniforms per comet.
-        // CPU cost: 3 uniform writes on click, nothing per frame.
-        const COMET_MAX  = 3;
-        const COMET_SEGS = 9;
-        const COMET_DUR  = 6.0;
-
-        const cSegAttr = new Float32Array(COMET_MAX * COMET_SEGS); // 0=head … 12=tail tip
-        const cIdxAttr = new Float32Array(COMET_MAX * COMET_SEGS); // 0,1,2 — which comet
-        const cPosAttr = new Float32Array(COMET_MAX * COMET_SEGS * 3);
-        for (let ci = 0; ci < COMET_MAX; ci++) {
-            for (let s = 0; s < COMET_SEGS; s++) {
-                const v = ci * COMET_SEGS + s;
-                cSegAttr[v]   = s;
-                cIdxAttr[v]   = ci;
-                cPosAttr[v*3] = 9999; // static placeholder — real pos in vertex shader
-            }
-        }
-        const cGeo = new THREE.BufferGeometry();
-        cGeo.setAttribute('position', new THREE.BufferAttribute(cPosAttr, 3));
-        cGeo.setAttribute('aSegment', new THREE.BufferAttribute(cSegAttr, 1));
-        cGeo.setAttribute('aComet',   new THREE.BufferAttribute(cIdxAttr, 1));
-
-        const _cStart = [new THREE.Vector3(999,0,0), new THREE.Vector3(999,0,0), new THREE.Vector3(999,0,0)];
-        const _cDir   = [new THREE.Vector3(1,0,0),   new THREE.Vector3(1,0,0),   new THREE.Vector3(1,0,0)];
-        const _cBirth = [-999, -999, -999];
-
-        const cometMat = new THREE.ShaderMaterial({
-            transparent: true,
-            depthWrite:  false,
-            uniforms: {
-                uTime:       { value: 0 },
-                uCometStart: { value: _cStart },
-                uCometDir:   { value: _cDir   },
-                uCometBirth: { value: _cBirth  },
-            },
-            vertexShader: `
-                attribute float aSegment;
-                attribute float aComet;
-                varying   float vSeg;
-                varying   float vLife;
-
-                uniform float uTime;
-                uniform vec3  uCometStart[3];
-                uniform vec3  uCometDir[3];
-                uniform float uCometBirth[3];
-
-                void main() {
-                    // Select this comet's data (if-else for WebGL 1.0 safety)
-                    vec3  cStart; vec3 cDir; float cBirth;
-                    if      (aComet < 0.5) { cStart=uCometStart[0]; cDir=uCometDir[0]; cBirth=uCometBirth[0]; }
-                    else if (aComet < 1.5) { cStart=uCometStart[1]; cDir=uCometDir[1]; cBirth=uCometBirth[1]; }
-                    else                   { cStart=uCometStart[2]; cDir=uCometDir[2]; cBirth=uCometBirth[2]; }
-
-                    float age  = uTime - cBirth;
-                    float t    = clamp(age / ${COMET_DUR.toFixed(1)}, 0.0, 1.05);
-
-                    // Head moves at 2.5 world-units per second; tail trails behind
-                    vec3  head = cStart + cDir * age * 2.5;
-                    vec3  pos  = head   - cDir * aSegment * 0.18;
-
-                    // Soft fade-in → hold → fade-out
-                    float life = smoothstep(0.0, 0.14, t) * (1.0 - smoothstep(0.65, 1.0, t));
-
-                    // Head = 13 px, tail tip ~ 1 px — small and distant
-                    float segN = aSegment / float(${COMET_SEGS - 1});
-                    float sz   = (1.0 - segN * 0.92) * life * 13.0;
-
-                    vSeg  = segN;
-                    vLife = life;
-                    gl_PointSize = max(sz, 0.0);
-                    gl_Position  = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
-                }
-            `,
-            fragmentShader: `
-                varying float vSeg;
-                varying float vLife;
-
-                void main() {
-                    vec2  uv = gl_PointCoord * 2.0 - 1.0;
-                    float r  = length(uv);
-                    if (r > 1.0) discard;
-
-                    // Soft diffuse glow — no rays, no starburst, just a distant natural light
-                    float core  = smoothstep(0.32, 0.0, r);
-                    float bloom = smoothstep(1.0, 0.18, r) * 0.28 * step(vSeg, 0.04);
-
-                    float alpha = (core + bloom) * vLife * (1.0 - vSeg * 0.88);
-
-                    // Faint white-blue — looks like a real distant comet, not a firework
-                    vec3  col = mix(vec3(0.42, 0.74, 1.00), vec3(0.92, 0.96, 1.00),
-                                   (1.0 - vSeg) * core);
-
-                    gl_FragColor = vec4(col, alpha);
-                }
-            `
-        });
-
-        const cometMesh = new THREE.Points(cGeo, cometMat);
-        cometMesh.frustumCulled = false; // positions are computed in shader, not geometry
-        scene.add(cometMesh);
-
         // ── Animation constants ──
         const IDLE_AMP  = 0.12,  IDLE_FREQ  = 0.50, IDLE_STAG  = 0.38;
         const PULSE_AMP = 0.34,  PULSE_FREQ = 0.62, PULSE_STAG = 0.45;
@@ -552,8 +810,7 @@
         const _idleColor    = new THREE.Color('#26b2db');
         const _hoverColor   = new THREE.Color('#76e0fa');
         const _ringWorldPos = new THREE.Vector3();
-        let animTime   = 0;
-        let _cometSlot = 0;
+        let animTime = 0;
 
         // ── Scroll fly-through state ──
         let scrollTarget   = 0;   // 0 = intro  1 = fully inside
@@ -650,44 +907,10 @@
             mouseX = t.clientX; mouseY = t.clientY;
         }, { passive: true });
 
-        // Click in sky — launch a comet through the clicked point
-        // The comet is already at full brightness when it appears there,
-        // then travels across the starfield and fades into the dark.
-        window.addEventListener('click', e => {
-            if (targetProximity > 0.15) return; // don't intercept logo clicks
-
-            const nx = (e.clientX / window.innerWidth)  * 2 - 1;
-            const ny = -(e.clientY / window.innerHeight) * 2 + 1;
-            _ray.setFromCamera({ x: nx, y: ny }, camera);
-
-            // Place the comet deep in the sky — far enough to look genuinely distant
-            const dist = 38 + Math.random() * 16;
-            const pt   = _ray.ray.at(dist, new THREE.Vector3());
-
-            // Fully random travel direction across the sphere
-            const th      = Math.random() * Math.PI * 2;
-            const ph      = Math.acos(2 * Math.random() - 1);
-            const moveDir = new THREE.Vector3(
-                Math.sin(ph) * Math.cos(th),
-                Math.sin(ph) * Math.sin(th),
-                Math.cos(ph)
-            ).normalize();
-
-            // Start behind the click point so comet is fully lit when it arrives there
-            const preTravel = 1.2 + Math.random() * 0.6; // seconds already travelled
-            const startPos  = pt.clone().addScaledVector(moveDir, -(preTravel * 3.0));
-
-            const slot = _cometSlot % COMET_MAX;
-            _cometSlot++;
-            cometMat.uniforms.uCometStart.value[slot].copy(startPos);
-            cometMat.uniforms.uCometDir.value[slot].copy(moveDir);
-            cometMat.uniforms.uCometBirth.value[slot] = animTime - preTravel;
-        });
-
-        // Click on logo scrolls IN only — scroll back is wheel/swipe only
+        // Click on logo triggers scroll fly-through (toggle in / out)
         window.addEventListener('click', () => {
-            if (targetProximity < 0.05 || scrollLocked || scrollTarget > 0.5) return;
-            scrollTarget = 1;
+            if (targetProximity < 0.05 || scrollLocked) return;
+            scrollTarget = scrollTarget < 0.5 ? 1 : 0;
             scrollLocked = true;
             const check = setInterval(() => {
                 if (Math.abs(scrollProgress - scrollTarget) < 0.03) {
@@ -841,15 +1064,6 @@
                     ? (isTouch ? 'swipe down to return' : 'scroll down to return')
                     : (isTouch ? 'tap · swipe up to explore' : 'hover · scroll to explore');
             }
-
-            // Update GPU star uniforms + slow rotation
-            if (window._starMat) {
-                window._starMat.uniforms.uTime.value = animTime;
-                window._starMat.uniforms.uMouseWorld.value.copy(_mouseTarget);
-            }
-            if (window._starMesh) window._starMesh.rotation.y += 0.00008;
-            // Comet lifecycle — one uniform write per frame, all motion in GLSL
-            cometMat.uniforms.uTime.value = animTime;
 
             renderer.render(scene, camera);
         }
