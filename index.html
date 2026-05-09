@@ -325,6 +325,52 @@
         }
         .jd-line.filled { background: rgba(100, 180, 255, 0.28); }
 
+        /* ── Recent Projects carousel header ── */
+        #carousel-header {
+            position: fixed; top: 2rem; left: 50%; transform: translateX(-50%);
+            z-index: 20; text-align: center; pointer-events: none; white-space: nowrap;
+            opacity: 0; transition: opacity 0.7s ease;
+        }
+        #carousel-header.visible { opacity: 1; }
+        .ch-eyebrow {
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 0.60rem; font-weight: 500; letter-spacing: 0.40em; text-transform: uppercase;
+            color: rgba(100, 220, 255, 0.40); margin: 0 0 0.55rem;
+        }
+        .ch-title {
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: clamp(1.2rem, 2.6vw, 2rem); font-weight: 700; letter-spacing: 0.05em;
+            background: linear-gradient(135deg, #a8daff 0%, #ffffff 50%, #70c8ff 100%);
+            -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+            filter: drop-shadow(0 0 18px rgba(38,178,219,0.45));
+            margin: 0;
+        }
+
+        /* ── Sound toggle button ── */
+        #sound-toggle {
+            position: fixed;
+            bottom: 4.5rem; right: 2rem;
+            z-index: 25;
+            width: 44px; height: 44px;
+            border-radius: 50%;
+            background: rgba(4, 16, 31, 0.65);
+            border: 1px solid rgba(100, 200, 255, 0.22);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            display: flex; align-items: center; justify-content: center;
+            cursor: pointer;
+            opacity: 0; pointer-events: none;
+            transition: opacity 0.4s ease, border-color 0.25s, background 0.25s;
+            outline: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+        #sound-toggle.visible   { opacity: 1; pointer-events: auto; }
+        #sound-toggle.sound-on  { border-color: rgba(38,178,219,0.60); background: rgba(0,50,110,0.60); }
+        #sound-toggle:hover     { border-color: rgba(100,200,255,0.55); }
+        #sound-toggle svg       { width: 20px; height: 20px; pointer-events: none; }
+
+        /* Drag cursor in video zone */
+        body.vz-drag { cursor: grabbing !important; }
 
     </style>
 </head>
@@ -375,7 +421,7 @@
         renderer.setClearColor(0x000000, 0);
 
         const scene  = new THREE.Scene();
-        const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 100);
+        const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 500);
         camera.position.set(0, 0, 3.5);
 
         // Lights — brand-colour palette, visible at rest, brighter on hover
@@ -564,58 +610,6 @@
             })));
         }
 
-        // ── Procedural planet ──
-        const _planetVS = `
-            varying vec2 vUv; varying vec3 vNormal;
-            void main() {
-                vUv = uv;
-                vNormal = normalize(normalMatrix * normal);
-                gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-            }
-        `;
-        const _planetFS = `
-            uniform float uTime;
-            uniform vec3  uCol1; uniform vec3 uCol2; uniform vec3 uCol3;
-            varying vec2  vUv;   varying vec3 vNormal;
-            void main() {
-                float n = sin(vUv.x*11.0+uTime*0.22)*cos(vUv.y*7.0-uTime*0.17)
-                        + sin(vUv.x*5.5 -uTime*0.11+vUv.y*9.0)*0.55;
-                n = n * 0.5 + 0.5;
-                vec3 color = mix(uCol1, uCol2, n);
-                color = mix(color, uCol3, smoothstep(0.55, 0.85, n));
-                vec3 light = normalize(vec3(0.7, 0.5, 0.8));
-                float diff = dot(vNormal, light)*0.5+0.5;
-                float limb = pow(max(0.0, dot(vNormal, vec3(0.0,0.0,1.0))), 0.35);
-                color *= diff*(0.45+0.55*limb);
-                gl_FragColor = vec4(color, 1.0);
-            }
-        `;
-
-        function makePlanet(cfg) {
-            const grp = new THREE.Group();
-            grp.position.set(cfg.x, cfg.y, cfg.z);
-            const bodyMat = new THREE.ShaderMaterial({
-                vertexShader: _planetVS, fragmentShader: _planetFS,
-                uniforms: { uTime:{value:0}, uCol1:{value:new THREE.Color(cfg.c1)},
-                            uCol2:{value:new THREE.Color(cfg.c2)}, uCol3:{value:new THREE.Color(cfg.c3)} }
-            });
-            grp.add(new THREE.Mesh(new THREE.SphereGeometry(cfg.r, 56, 56), bodyMat));
-            grp.add(new THREE.Mesh(new THREE.SphereGeometry(cfg.r*1.20,32,32),
-                new THREE.MeshBasicMaterial({ color:cfg.atm, transparent:true, opacity:0.13,
-                    side:THREE.BackSide, blending:THREE.AdditiveBlending, depthWrite:false })));
-            grp.add(new THREE.Mesh(new THREE.SphereGeometry(cfg.r*1.55,24,24),
-                new THREE.MeshBasicMaterial({ color:cfg.atm, transparent:true, opacity:0.06,
-                    side:THREE.BackSide, blending:THREE.AdditiveBlending, depthWrite:false })));
-            grp.visible = false;
-            scene.add(grp);
-            return { grp, bodyMat };
-        }
-
-        // Contact Us planet — amber-gold, down-left
-        const contactPlanet = makePlanet({
-            x:-18, y:-22, z:-118, r:2.2,
-            c1:'#1a0800', c2:'#4d1e00', c3:'#cc6200', atm:0xdd5500
-        });
 
         // ── Comet system ──
         // 3 comet slots × 13 segments each = 39 GPU points total.
@@ -737,18 +731,19 @@
         let scrollTarget   = 0;
         let scrollProgress = 0;
         const MAX_SCROLL   = 5;
-        let _returning    = false; // true after snap — drives reverse fly-through reveal
-        let _virtualFlyZ  = -2.5; // virtual camera Z for reveal: sweeps -2.5 → 3.5
-        let _returnSP     = 0;    // 1→0: mirrors scrollProgress during reveal (spread→base)
+        let _returning     = false; // true after snap — drives reverse fly-through reveal
+        let _virtualFlyZ   = -2.5; // virtual camera Z for reveal: sweeps -2.5 → 3.5
+        let _returnSP      = 0;    // 1→0: mirrors scrollProgress during reveal (spread→base)
+        let _returnRevealT = 0;    // 0→1: logo emissive fade-in during reveal
 
         // Camera waypoints — active when scrollProgress > 1 (sp = scrollProgress - 1)
-        // Straight dive → tilt to planet → LEFT-bank bezier arc back to hero (one scroll)
+        // Approach video zone → drone explores videos → exit → contact planet → return arc
         const SPACE_WP = [
-            { pos: new THREE.Vector3(  0,   0,  -2.5), look: new THREE.Vector3(  0,   0, -25)  }, // sp=0 exit hero
-            { pos: new THREE.Vector3(  0,   0,  -58),  look: new THREE.Vector3(  0,   0, -95)  }, // sp=1 deep straight
-            { pos: new THREE.Vector3( -5,  -6,  -78),  look: new THREE.Vector3(-18, -22,-118)  }, // sp=2 gentle tilt to planet
-            { pos: new THREE.Vector3(-18, -14, -102),  look: new THREE.Vector3(-18, -22,-118)  }, // sp=3 arrived Contact Us
-            { pos: new THREE.Vector3(  0,   0,   3.5), look: new THREE.Vector3(  0,   0,   0)  }, // sp=4 hero entrance
+            { pos: new THREE.Vector3(  0,   0,  -2.5), look: new THREE.Vector3(  0,   0,  -25)  }, // sp=0 exit hero
+            { pos: new THREE.Vector3(  0,   0,  -54),  look: new THREE.Vector3(  0,   0,  -68)  }, // sp=1 video zone (drone overrides from here)
+            { pos: new THREE.Vector3(  0,   0,  -88),  look: new THREE.Vector3(-12, -15, -128)  }, // sp=2 exit video zone → planet
+            { pos: new THREE.Vector3(-12,  -8, -128),  look: new THREE.Vector3(-16, -20, -150)  }, // sp=3 contact planet
+            { pos: new THREE.Vector3(  0,   0,   3.5), look: new THREE.Vector3(  0,   0,   0)  }, // sp=4 return
         ];
         // Cubic Bézier control points for the return arc (WP[3] → WP[4])
         // ctrl1 = departure: hard left + rising, still deep — like a plane banking out of a valley
@@ -762,8 +757,9 @@
         const _heroLook = new THREE.Vector3(0, 0, -25); // always look forward so exit matches WP[0]
 
         // DOM layer refs
-        const contactLayer = document.getElementById('contact-layer');
-        const spaceNavHint = document.getElementById('space-nav-hint');
+        const spaceNavHint    = document.getElementById('space-nav-hint');
+        const carouselHeader  = document.getElementById('carousel-header');
+        const soundToggleBtn  = document.getElementById('sound-toggle');
         const jdNodes      = [0,1,2,3].map(i => document.getElementById('jd'  + i));
         const jdLines      = [0,1,2]  .map(i => document.getElementById('jdl' + i));
         let   _lastJdStage = -1;
@@ -818,10 +814,382 @@
             });
         });
 
+        // ── Lights bracketing the form in deep space (near contact planet) ──
+        const _formLight1 = new THREE.PointLight(0x26b2db, 600, 40);
+        _formLight1.position.set(-10, -6, -120);
+        scene.add(_formLight1);
+        const _formLight2 = new THREE.PointLight(0x0a4080, 250, 35);
+        _formLight2.position.set(-20, -24, -138);
+        scene.add(_formLight2);
+
+        // ── Contact form GLB — spins in deep space at the contact waypoint ──
+        let formGroup = null;
+        let _formRotY = 0;
+
+        new GLTFLoader().load('./form.glb', gltf => {
+            const inner = gltf.scene;
+
+            const box = new THREE.Box3().setFromObject(inner);
+            const ctr = box.getCenter(new THREE.Vector3());
+            const sz  = box.getSize(new THREE.Vector3()).length();
+            const s   = 5.0 / sz; // ~5 world-units tall — readable at 13-unit camera distance
+
+            inner.scale.setScalar(s);
+            inner.position.set(-ctr.x * s, -ctr.y * s, -ctr.z * s);
+            inner.rotation.y = Math.PI; // text face on -Z side → flip to face camera
+
+            // MeshBasicMaterial override — zero lighting dependency, always visible in dark space
+            inner.traverse(child => {
+                if (!child.isMesh) return;
+                const isArr  = Array.isArray(child.material);
+                const srcArr = isArr ? child.material : [child.material];
+                const newArr = srcArr.map(m => {
+                    const isGlass = m.transparent && m.opacity < 0.55;
+                    const emLum   = m.emissive ? (m.emissive.r + m.emissive.g + m.emissive.b) : 0;
+                    const isGlow  = !isGlass && emLum > 0.15;
+                    let color, transparent, opacity;
+                    if (isGlass) {
+                        color = new THREE.Color(0x071428); transparent = true;  opacity = 0.82;
+                    } else if (isGlow) {
+                        color = new THREE.Color(0x26b2db); transparent = false; opacity = 1.0;
+                    } else {
+                        color = new THREE.Color(0x0d1f42); transparent = false; opacity = 1.0;
+                    }
+                    const nm = new THREE.MeshBasicMaterial({ color, side: THREE.DoubleSide, transparent, opacity });
+                    m.dispose();
+                    return nm;
+                });
+                child.material = isArr ? newArr : newArr[0];
+            });
+
+            formGroup = new THREE.Group();
+            formGroup.add(inner);
+            formGroup.position.set(-14, -16, -132); // near contact planet at sp=3
+            formGroup.visible = false;
+            scene.add(formGroup);
+            console.log('form.glb loaded ✓  scale=', s.toFixed(3));
+        }, undefined, err => console.error('form.glb load error:', err));
+
+        // ── Video Zone — scattered portrait cards + drone camera ──
+        const _VIDEO_SRCS = [
+            'videos/deepstudio_creative_1777797447_3888768391039753014_7810032343.mp4',
+            'videos/deepstudio_creative_1777725088_3888161172908759771_7810032343.mp4',
+            'videos/deepstudio_creative_1776497031_3877858279510794490_7810032343.mp4',
+            'videos/deepstudio_creative_1777650837_3887537589215975484_7810032343.mp4',
+        ];
+        const _CARD_W = 4.5, _CARD_H = 8.0; // portrait 9:16
+
+        // Each entry: world pos, initial Y rotation, camera landing pos (in front of card face)
+        const VIDEO_CONFIGS = [
+            { pos: new THREE.Vector3(  0,   0,  -68), rotY:  0.00, camPos: new THREE.Vector3(  0,   0, -54) },
+            { pos: new THREE.Vector3( 22,   5,  -82), rotY: -0.45, camPos: new THREE.Vector3( 16,   5, -69) },
+            { pos: new THREE.Vector3(-20,  -6,  -95), rotY:  0.45, camPos: new THREE.Vector3(-14,  -6, -82) },
+            { pos: new THREE.Vector3( 14, -10, -108), rotY: -0.30, camPos: new THREE.Vector3( 10, -10, -95) },
+        ];
+
+        // Drone state
+        let videoIndex   = 0;
+        const seenVideos = new Set([0]); // card 0 is seen on entry
+
+        // Ambient light for the video zone
+        const _videoZoneLight = new THREE.PointLight(0x1a4a7a, 0, 90);
+        _videoZoneLight.position.set(0, 10, -85);
+        scene.add(_videoZoneLight);
+
+        // ── Contact planet (amber-orange, deep space) ──
+        const _planetVS = `
+            varying vec2 vUv; varying vec3 vNormal;
+            void main() {
+                vUv = uv; vNormal = normalize(normalMatrix * normal);
+                gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+            }
+        `;
+        const _planetFS = `
+            uniform float uTime;
+            uniform vec3  uCol1; uniform vec3 uCol2; uniform vec3 uCol3;
+            varying vec2  vUv;   varying vec3 vNormal;
+            void main() {
+                float n = sin(vUv.x*11.0+uTime*0.22)*cos(vUv.y*7.0-uTime*0.17)
+                        + sin(vUv.x*5.5 -uTime*0.11+vUv.y*9.0)*0.55;
+                n = n * 0.5 + 0.5;
+                vec3 color = mix(uCol1, uCol2, n);
+                color = mix(color, uCol3, smoothstep(0.55, 0.85, n));
+                vec3 light = normalize(vec3(0.7, 0.5, 0.8));
+                float diff = dot(vNormal, light)*0.5+0.5;
+                float limb = pow(max(0.0, dot(vNormal, vec3(0.0,0.0,1.0))), 0.35);
+                color *= diff*(0.45+0.55*limb);
+                gl_FragColor = vec4(color, 1.0);
+            }
+        `;
+        function makePlanet(cfg) {
+            const grp = new THREE.Group();
+            grp.position.set(cfg.x, cfg.y, cfg.z);
+            const bodyMat = new THREE.ShaderMaterial({
+                vertexShader: _planetVS, fragmentShader: _planetFS,
+                uniforms: { uTime:{value:0}, uCol1:{value:new THREE.Color(cfg.c1)},
+                            uCol2:{value:new THREE.Color(cfg.c2)}, uCol3:{value:new THREE.Color(cfg.c3)} }
+            });
+            grp.add(new THREE.Mesh(new THREE.SphereGeometry(cfg.r, 56, 56), bodyMat));
+            grp.add(new THREE.Mesh(new THREE.SphereGeometry(cfg.r*1.20,32,32),
+                new THREE.MeshBasicMaterial({ color:cfg.atm, transparent:true, opacity:0.13,
+                    side:THREE.BackSide, blending:THREE.AdditiveBlending, depthWrite:false })));
+            grp.add(new THREE.Mesh(new THREE.SphereGeometry(cfg.r*1.55,24,24),
+                new THREE.MeshBasicMaterial({ color:cfg.atm, transparent:true, opacity:0.06,
+                    side:THREE.BackSide, blending:THREE.AdditiveBlending, depthWrite:false })));
+            grp.visible = false;
+            scene.add(grp);
+            return { grp, bodyMat };
+        }
+        const contactPlanet = makePlanet({
+            x:-16, y:-20, z:-150, r:3.5,
+            c1:'#1a0800', c2:'#4d1e00', c3:'#cc6200', atm:0xdd5500
+        });
+
+        // Build one card per video — each placed at its own world position
+        const videoCards = []; // Three.Group refs (for raycasting)
+        const _videoEls  = [];
+        const _flameMats = []; // per-card flame border ShaderMaterial refs
+
+        // ── Neon Flame Border Shader ──
+        // Flame plane is 0.50 units larger than card (0.25 each side).
+        // Card edge sits at UV = 0.25/planeSize from each UV border.
+        const _FP_W = _CARD_W + 2.0; // 6.5 — 1.0 world unit glow margin each side
+        const _FP_H = _CARD_H + 2.0; // 10.0
+
+        const _FLAME_VS = `
+            varying vec2 vUv;
+            void main() {
+                vUv = uv;
+                gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+            }
+        `;
+
+        const _FLAME_FS = `
+            precision highp float;
+            varying vec2 vUv;
+            uniform float uTime;
+            uniform float uSeed;
+            uniform float uIntensity;
+            uniform vec2  uEdge;
+
+            float h1(float n) { return fract(sin(n * 127.1) * 43758.5453); }
+            float h2(vec2 p) {
+                p = fract(p * vec2(0.1031, 0.1030));
+                p += dot(p, p.yx + 33.33);
+                return fract((p.x + p.y) * p.x);
+            }
+            float vnoise(vec2 p) {
+                vec2 i = floor(p); vec2 f = fract(p);
+                f = f * f * (3.0 - 2.0 * f);
+                return mix(mix(h2(i), h2(i+vec2(1,0)), f.x),
+                           mix(h2(i+vec2(0,1)), h2(i+vec2(1,1)), f.x), f.y);
+            }
+
+            void main() {
+                vec2 uv = vUv;
+                // Slow time = organic, natural movement
+                float t = uTime * 0.55 + uSeed;
+
+                // Rectangle SDF: negative = inside card, positive = outside
+                vec2 halfSize = vec2(0.5 - uEdge.x, 0.5 - uEdge.y);
+                vec2 p = uv - 0.5;
+                vec2 q = abs(p) - halfSize;
+                float sdf  = length(max(q, 0.0)) + min(max(q.x, q.y), 0.0);
+                float outD = max(0.0, sdf); // 0 at border, grows outward
+                float outside = step(0.0, sdf); // 1 outside card, 0 inside
+
+                // Normalized along-edge coord (-1 to 1, consistent on all sides)
+                float along = (abs(p.x) * halfSize.y > abs(p.y) * halfSize.x)
+                            ? p.y / halfSize.y
+                            : p.x / halfSize.x;
+
+                // ── Narrow flame tendrils ──
+                // Multi-octave value noise, then threshold to keep only peaks
+                // (thresholding = isolated narrow wisps instead of broad fill)
+                float n1 = vnoise(vec2(along * 11.0 + t * 0.38, t * 0.20));
+                float n2 = vnoise(vec2(along * 25.0 + t * 0.62, t * 0.32 + 1.7));
+                float n3 = vnoise(vec2(along * 48.0 + t * 0.95, t * 0.48 + 3.3));
+                float n4 = vnoise(vec2(along * 85.0 + t * 1.55, t * 0.72 + 5.8));
+
+                // Each octave thresholded: only tops of noise waves survive → narrow peaks
+                float f1 = max(0.0, n1 - 0.50) * 2.00;  // broad base wisps
+                float f2 = max(0.0, n2 - 0.58) * 2.38;  // medium wisps
+                float f3 = max(0.0, n3 - 0.64) * 2.78;  // thin wisps
+                float f4 = max(0.0, n4 - 0.70) * 3.33;  // micro wisps
+
+                // Total flame height at this border position
+                float flameH = f1 * 0.075 + f2 * 0.038 + f3 * 0.017 + f4 * 0.007;
+
+                // Brightness: only within flame envelope, cubic fade toward tip
+                float inEnv    = step(outD, flameH) * outside;
+                float tipRatio = max(0.0, 1.0 - outD / max(flameH, 0.0001));
+                float flame    = inEnv * tipRatio * tipRatio * tipRatio;
+
+                // ── Continuous base glow (smooth neon-tube quality, no crackle) ──
+                float baseGlow = exp(-outD * 20.0) * outside * 0.85;
+                float halo     = smoothstep(0.11, 0.0, outD) * outside * 0.55;
+
+                // ── Core bright line: smooth, clean ──
+                float core = smoothstep(0.018, 0.001, abs(sdf))
+                           * smoothstep(-0.006, 0.004, sdf); // suppress interior
+
+                // ── Corner hotspots ──
+                float c00 = length(p - vec2(-halfSize.x, -halfSize.y));
+                float c01 = length(p - vec2(-halfSize.x,  halfSize.y));
+                float c10 = length(p - vec2( halfSize.x, -halfSize.y));
+                float c11 = length(p - vec2( halfSize.x,  halfSize.y));
+                float cMin = min(min(c00, c01), min(c10, c11));
+                float cornerH = smoothstep(0.055, 0.0, cMin)
+                              * (0.55 + 0.45 * sin(t * 4.2 + uSeed * 2.1));
+
+                // ── Soft glowing particles (slow drift, large soft glow) ──
+                float sparks = 0.0;
+                for (int k = 0; k < 14; k++) {
+                    float fk   = float(k) * 1.618 + uSeed * 3.9;
+                    float bPos = fract(h1(fk) + t * 0.4 * (0.055 + h1(fk+1.0) * 0.09));
+                    vec2 sp;
+                    float bT = bPos * 4.0;
+                    if      (bT < 1.0) sp = vec2(mix(-halfSize.x,  halfSize.x, bT       ),  -halfSize.y);
+                    else if (bT < 2.0) sp = vec2( halfSize.x,  mix(-halfSize.y, halfSize.y, bT - 1.0));
+                    else if (bT < 3.0) sp = vec2(mix( halfSize.x, -halfSize.x, bT - 2.0),    halfSize.y);
+                    else               sp = vec2(-halfSize.x,  mix( halfSize.y,-halfSize.y, bT - 3.0));
+                    sp += normalize(sp + vec2(0.0001)) * (0.007 + h1(fk+2.0) * 0.042);
+                    float life = sin(fract(h1(fk+5.0) + t * 0.4 * (0.15 + h1(fk+6.0) * 0.18)) * 3.14159);
+                    float sz   = 0.007 + h1(fk+7.0) * 0.008;
+                    sparks    += smoothstep(sz, sz * 0.15, length(p - sp)) * life * 0.65;
+                }
+                sparks = min(sparks, 1.2);
+
+                // ── Assemble ──
+                float I = (core    * 3.5
+                         + flame   * 3.0
+                         + baseGlow * 1.0
+                         + halo    * 0.6
+                         + cornerH * 1.4
+                         + sparks  * 1.0)
+                        * uIntensity;
+                I = clamp(I, 0.0, 1.0);
+
+                // Color: deep space blue → electric blue → cyan-white → white at core
+                vec3 deepBlue  = vec3(0.02, 0.08, 0.78);
+                vec3 elecBlue  = vec3(0.10, 0.44, 1.00);
+                vec3 cyanWhite = vec3(0.50, 0.86, 1.00);
+                vec3 white     = vec3(0.90, 0.97, 1.00);
+
+                vec3 col = deepBlue;
+                col = mix(col, elecBlue,  clamp((halo + baseGlow + flame * 0.5) * 2.2,  0.0, 1.0));
+                col = mix(col, cyanWhite, clamp((flame + cornerH * 0.5) * 2.5,          0.0, 1.0));
+                col = mix(col, white,     clamp((core + sparks * 0.4) * 2.5,            0.0, 1.0));
+
+                gl_FragColor = vec4(col, I);
+            }
+        `;
+
+        _VIDEO_SRCS.forEach((src, i) => {
+            const cfg = VIDEO_CONFIGS[i];
+
+            const vid = document.createElement('video');
+            vid.src = src; vid.muted = true; vid.loop = true;
+            vid.playsInline = true; vid.crossOrigin = 'anonymous';
+            vid.style.cssText = 'position:absolute;width:1px;height:1px;opacity:0;pointer-events:none';
+            document.body.appendChild(vid);
+            _videoEls.push(vid);
+
+            const tex = new THREE.VideoTexture(vid);
+            tex.minFilter = THREE.LinearFilter;
+            tex.magFilter = THREE.LinearFilter;
+            tex.colorSpace = THREE.SRGBColorSpace;
+
+            const card = new THREE.Group();
+            card.position.copy(cfg.pos);
+            card.rotation.y = cfg.rotY;
+
+            // Dark bezel — background frame, slightly larger than screen
+            const bezel = new THREE.Mesh(
+                new THREE.PlaneGeometry(_CARD_W + 0.22, _CARD_H + 0.22),
+                new THREE.MeshBasicMaterial({ color: 0x020c18 })
+            );
+            bezel.position.z = -0.01;
+            card.add(bezel);
+
+            // Video screen
+            const screen = new THREE.Mesh(
+                new THREE.PlaneGeometry(_CARD_W, _CARD_H),
+                new THREE.MeshBasicMaterial({ map: tex, toneMapped: false })
+            );
+            card.add(screen);
+
+            // Neon flame border — custom shader, additive, larger than card
+            const flameMat = new THREE.ShaderMaterial({
+                vertexShader:   _FLAME_VS,
+                fragmentShader: _FLAME_FS,
+                transparent:    true,
+                depthWrite:     false,
+                blending:       THREE.AdditiveBlending,
+                side:           THREE.DoubleSide,
+                uniforms: {
+                    uTime:      { value: 0 },
+                    uSeed:      { value: i * 2.718 + 0.5 },
+                    uIntensity: { value: 0.7 },
+                    uEdge:      { value: new THREE.Vector2(1.0 / _FP_W, 1.0 / _FP_H) },
+                },
+            });
+            _flameMats.push(flameMat);
+            const flameMesh = new THREE.Mesh(
+                new THREE.PlaneGeometry(_FP_W, _FP_H),
+                flameMat
+            );
+            flameMesh.position.z = 0.01;
+            card.add(flameMesh);
+
+            card.visible = false;
+            scene.add(card);
+            videoCards.push(card);
+        });
+
+        // ── Sound + drag state ──
+        let _soundOn = false;
+        let _isDragging = false, _dragStartX = 0, _dragConsumed = false;
+
+        const _SVG_MUTED = `<svg viewBox="0 0 24 24" fill="none" stroke="rgba(100,220,255,0.85)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><line x1="23" y1="9" x2="17" y2="15"/><line x1="17" y1="9" x2="23" y2="15"/></svg>`;
+        const _SVG_SOUND = `<svg viewBox="0 0 24 24" fill="none" stroke="rgba(100,220,255,0.85)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>`;
+
+        if (soundToggleBtn) soundToggleBtn.innerHTML = _SVG_MUTED;
+
+        function _updateVideoAudio() {
+            _videoEls.forEach((v, i) => { v.muted = !(i === videoIndex && _soundOn); });
+        }
+
         window.addEventListener('resize', () => {
             camera.aspect = window.innerWidth / window.innerHeight;
             camera.updateProjectionMatrix();
             renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        // ── Mouse drag navigation (desktop) ──
+        window.addEventListener('mousedown', e => {
+            if (scrollTarget !== 2) return;
+            _dragStartX   = e.clientX;
+            _isDragging   = true;
+            _dragConsumed = false;
+        });
+        window.addEventListener('mousemove', e => {
+            if (!_isDragging) return;
+            if (Math.abs(e.clientX - _dragStartX) > 10) document.body.classList.add('vz-drag');
+        });
+        window.addEventListener('mouseup', e => {
+            if (!_isDragging) return;
+            document.body.classList.remove('vz-drag');
+            _isDragging = false;
+            if (scrollTarget !== 2) return;
+            const dx = e.clientX - _dragStartX;
+            if (Math.abs(dx) >= 55) {
+                _dragConsumed = true;
+                const dir = dx > 0 ? -1 : 1; // drag right = go back, drag left = go forward
+                videoIndex = (videoIndex + dir + _VIDEO_SRCS.length) % _VIDEO_SRCS.length;
+                seenVideos.add(videoIndex);
+                _updateVideoAudio();
+            }
         });
 
         let scrollLocked = false;
@@ -833,39 +1201,109 @@
             }, 100);
         }
 
+        function _navigateVideo(forward) {
+            if (forward) {
+                if (videoIndex < _VIDEO_SRCS.length - 1) {
+                    videoIndex++;
+                    seenVideos.add(videoIndex);
+                    _updateVideoAudio();
+                } else if (seenVideos.size >= 3) {
+                    scrollTarget = 3; flyLock(); // exit to contact planet
+                }
+            } else {
+                if (videoIndex > 0) {
+                    videoIndex--;
+                    _updateVideoAudio();
+                } else {
+                    scrollTarget = 1; flyLock(); // exit backward
+                }
+            }
+        }
+
         window.addEventListener('wheel', e => {
             e.preventDefault();
             if (scrollLocked) return;
-            // Block forward scroll while logo is rebuilding after return — user must see the logo first
             if (_returning && e.deltaY > 0) return;
+
+            // Video zone: intercept both horizontal and vertical scroll
+            if (scrollTarget === 2) {
+                const isH  = Math.abs(e.deltaX) > Math.abs(e.deltaY) * 0.7;
+                if (isH) {
+                    // Horizontal: wrap-around navigation (always loops all cards)
+                    const dir = e.deltaX > 0 ? 1 : -1;
+                    videoIndex = (videoIndex + dir + _VIDEO_SRCS.length) % _VIDEO_SRCS.length;
+                    seenVideos.add(videoIndex);
+                    _updateVideoAudio();
+                } else {
+                    _navigateVideo(e.deltaY > 0);
+                }
+                return;
+            }
+
             if (e.deltaY > 0 && scrollTarget < MAX_SCROLL) { scrollTarget++; flyLock(); }
             else if (e.deltaY < 0 && scrollTarget > 0)     { scrollTarget--; flyLock(); }
         }, { passive: false });
 
-        let _touchStartY = null;
+        let _touchStartY = null, _touchStartX = null;
         window.addEventListener('touchstart', e => {
             _touchStartY = e.touches[0].clientY;
+            _touchStartX = e.touches[0].clientX;
         }, { passive: true });
         window.addEventListener('touchend', e => {
             if (_touchStartY === null) return;
             const dy = _touchStartY - e.changedTouches[0].clientY;
-            _touchStartY = null;
-            if (scrollLocked || Math.abs(dy) < 40) return;
-            if (_returning && dy > 0) return; // same gate as wheel
+            const dx = _touchStartX - e.changedTouches[0].clientX;
+            _touchStartY = null; _touchStartX = null;
+            if (scrollLocked || (Math.abs(dy) < 40 && Math.abs(dx) < 40)) return;
+
+            // Video zone: both swipe directions navigate cards
+            if (scrollTarget === 2) {
+                const isH = Math.abs(dx) > Math.abs(dy);
+                if (isH) {
+                    const dir = dx > 0 ? 1 : -1;
+                    videoIndex = (videoIndex + dir + _VIDEO_SRCS.length) % _VIDEO_SRCS.length;
+                    seenVideos.add(videoIndex);
+                    _updateVideoAudio();
+                } else {
+                    _navigateVideo(dy > 0);
+                }
+                return;
+            }
+
+            if (_returning && dy > 0) return;
             if (dy > 0 && scrollTarget < MAX_SCROLL) { scrollTarget++; flyLock(); }
             else if (dy < 0 && scrollTarget > 0)     { scrollTarget--; flyLock(); }
         }, { passive: true });
 
-        // Touch mousemove proxy — drives comet ignition and proximity on touch devices
+        // Touch mousemove proxy — mirrors mouse proximity tracking on touch devices
         window.addEventListener('touchmove', e => {
-            const t = e.touches[0];
-            mouseX = t.clientX; mouseY = t.clientY;
+            const t  = e.touches[0];
+            const nx = (t.clientX / window.innerWidth)  * 2 - 1;
+            const ny = -(t.clientY / window.innerHeight) * 2 + 1;
+            _ray.setFromCamera({ x: nx, y: ny }, camera);
+            _ray.ray.at(2.0, _mouseTarget);
         }, { passive: true });
 
-        // Click in sky — launch a comet through the clicked point
-        // The comet is already at full brightness when it appears there,
-        // then travels across the starfield and fades into the dark.
+        // Click on a video card — drone flies to that card (video zone only)
         window.addEventListener('click', e => {
+            if (scrollTarget !== 2) return;
+            if (_dragConsumed) { _dragConsumed = false; return; }
+            const nx = (e.clientX / window.innerWidth) * 2 - 1;
+            const ny = -(e.clientY / window.innerHeight) * 2 + 1;
+            _ray.setFromCamera({ x: nx, y: ny }, camera);
+            for (let i = 0; i < videoCards.length; i++) {
+                if (_ray.intersectObjects(videoCards[i].children, false).length > 0) {
+                    videoIndex = i;
+                    seenVideos.add(i);
+                    _updateVideoAudio();
+                    return;
+                }
+            }
+        });
+
+        // Click in sky — launch a comet through the clicked point
+        window.addEventListener('click', e => {
+            if (_dragConsumed) { _dragConsumed = false; return; }
             if (targetProximity > 0.15) return; // don't intercept logo clicks
 
             const nx = (e.clientX / window.innerWidth)  * 2 - 1;
@@ -910,10 +1348,22 @@
         });
 
 
+        // Sound toggle click
+        if (soundToggleBtn) {
+            soundToggleBtn.addEventListener('click', e => {
+                e.stopPropagation(); // don't fire comet/card handlers
+                _soundOn = !_soundOn;
+                _updateVideoAudio();
+                soundToggleBtn.innerHTML = _soundOn ? _SVG_SOUND : _SVG_MUTED;
+                soundToggleBtn.setAttribute('aria-label', _soundOn ? 'Mute' : 'Unmute');
+                soundToggleBtn.classList.toggle('sound-on', _soundOn);
+            });
+        }
+
         const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
         const isTouch = window.matchMedia('(hover: none) and (pointer: coarse)').matches;
         const hintEl  = document.getElementById('hint');
-        let   lastScrollState = -1;
+        let   lastScrollState = '';
         let   _threeRunning   = true;
 
         document.addEventListener('visibilitychange', () => {
@@ -1004,9 +1454,10 @@
             if (scrollTarget >= MAX_SCROLL && scrollProgress >= MAX_SCROLL - 0.08) {
                 scrollProgress  = 0;
                 scrollTarget    = 0;
-                _returning   = true;
-                _virtualFlyZ = -2.5;  // start virtual camera at the fly-through origin
-                _returnSP    = 1.0;   // rings start fully spread (scroll=1 state)
+                _returning     = true;
+                _virtualFlyZ   = -2.5;
+                _returnSP      = 1.0;
+                _returnRevealT = 0;
             }
 
             scrollProgress += (scrollTarget - scrollProgress) * 0.055;
@@ -1026,11 +1477,21 @@
                 _tmpCam2.up.set(0, 1, 0);
                 _tmpCam2.lookAt(_heroLook);
                 camera.quaternion.slerp(_tmpCam2.quaternion, 0.10);
-                contactPlanet.grp.visible = false;
             } else {
-                // Space travel — camera follows waypoints
-                contactPlanet.grp.visible = true;
+                // Space travel — camera follows waypoints OR drones to active video card
                 const sp      = scrollProgress - 1.0;
+
+                // ── DRONE MODE: engaged when parked in video zone (scrollTarget=2, sp≥0.8) ──
+                if (scrollTarget === 2 && sp > 0.80) {
+                    const tPos  = VIDEO_CONFIGS[videoIndex].camPos;
+                    const tLook = VIDEO_CONFIGS[videoIndex].pos;
+                    camera.position.lerp(tPos, 0.038);
+                    _tmpCam2.position.copy(camera.position);
+                    _tmpCam2.up.set(0, 1, 0);
+                    _tmpCam2.lookAt(tLook);
+                    camera.quaternion.slerp(_tmpCam2.quaternion, 0.038);
+                } else {
+
                 const i0      = Math.min(Math.floor(sp), SPACE_WP.length - 2);
                 const raw     = sp - i0;
                 const et      = raw * raw * (3 - 2 * raw); // smoothstep
@@ -1060,7 +1521,8 @@
                 _tmpCam2.lookAt(_wpLookAt);
                 const rotSpeed = isReturn ? 0.045 : 0.028;
                 camera.quaternion.slerp(_tmpCam2.quaternion, rotSpeed);
-            }
+                } // end waypoint block
+            } // end !inHero
 
             // Share camera depth with particle canvas (hero only — 0..1 range)
             window._camScrollZ    = Math.max(0, Math.min(1, (3.5 - Math.min(camera.position.z, 3.5)) / 6.0));
@@ -1082,6 +1544,7 @@
                 const waveAmp = amp * Math.max(0, 1 - scrollProgress * 4);
 
                 if (_returning) {
+                    _returnRevealT = Math.min(1, _returnRevealT + dt * 0.8);
                     // Reverse fly-through: virtual camera sweeps Z=-2.5 → 3.5 (mirror of scroll-out)
                     // Rings start in spread state, compress to base; each fades IN as virtual cam passes it
                     _virtualFlyZ = Math.min(3.5, _virtualFlyZ + dt * 4.2); // ~1.4s total sweep
@@ -1115,12 +1578,74 @@
                 }
             }
 
-            // ── Contact Us planet visibility ──
-            const sp2 = scrollProgress - 1.0;
-            const contactVisible = sp2 > 1.7 && sp2 < 3.5;
-            contactLayer.classList.toggle('visible', contactVisible);
-            contactLayer.setAttribute('aria-hidden', String(!contactVisible));
-            spaceNavHint.classList.toggle('visible', scrollProgress > 1.05 && !contactVisible);
+            spaceNavHint.classList.toggle('visible', scrollProgress > 1.05);
+
+            // ── Form GLB visibility + slow rotation ──
+            if (formGroup) {
+                const sp2f = scrollProgress - 1.0;
+                formGroup.visible = sp2f >= 2.2 && sp2f < 4.2;
+                if (formGroup.visible) {
+                    _formRotY += 0.004;
+                    formGroup.rotation.y = _formRotY;
+                    formGroup.position.y = -20 + Math.sin(animTime * 0.38) * 0.08; // gentle float
+                }
+            }
+
+            // ── Video zone: card visibility + active card highlighting ──
+            {
+                const vzSP    = scrollProgress - 1.0;
+                const vzShow  = vzSP > 0.08 && vzSP < 4.5;
+                videoCards.forEach(c => { c.visible = vzShow; });
+
+                if (vzShow) {
+                    _videoEls.forEach(v => { if (v.paused) v.play().catch(() => {}); });
+                }
+
+                if (scrollTarget === 2 && vzSP > 0.5) {
+                    // Active card: brighter flames + gentle float; others: dim
+                    videoCards.forEach((c, i) => {
+                        const active = i === videoIndex;
+                        _flameMats[i].uniforms.uIntensity.value = active ? 1.6 : 0.7;
+                        _flameMats[i].uniforms.uTime.value = animTime;
+                        // Float active card gently
+                        c.position.y = VIDEO_CONFIGS[i].pos.y +
+                            (active ? Math.sin(animTime * 0.85) * 0.14 : 0);
+                    });
+                    _videoZoneLight.intensity = Math.min(1, (vzSP - 0.5) / 0.4) * 180;
+                } else {
+                    _flameMats.forEach(m => {
+                        m.uniforms.uIntensity.value = 0.7;
+                        m.uniforms.uTime.value = animTime;
+                    });
+                    _videoZoneLight.intensity = 0;
+                }
+                if (carouselHeader) {
+                    carouselHeader.classList.toggle('visible', scrollTarget === 2 && vzSP > 0.4 && vzSP < 2.2);
+                }
+                // Sound toggle — visible whenever in video zone
+                if (soundToggleBtn) {
+                    const stShow = scrollTarget === 2 && vzSP > 0.55;
+                    soundToggleBtn.classList.toggle('visible', stShow);
+                    if (!stShow && _soundOn) {
+                        // Leaving zone — mute all and reset button
+                        _soundOn = false;
+                        _videoEls.forEach(v => { v.muted = true; });
+                        soundToggleBtn.innerHTML = _SVG_MUTED;
+                        soundToggleBtn.classList.remove('sound-on');
+                    }
+                }
+            }
+
+            // ── Contact planet visibility + rotation ──
+            {
+                const cpSP = scrollProgress - 1.0;
+                const cpVisible = cpSP > 2.3 && cpSP < 4.5;
+                contactPlanet.grp.visible = cpVisible;
+                if (cpVisible) {
+                    contactPlanet.grp.rotation.y += 0.0015;
+                    contactPlanet.bodyMat.uniforms.uTime.value = animTime;
+                }
+            }
 
             // ── Journey dots ──
             // Stage 0=HOME(start) 1=SPACE 2=CONTACT 3=HOME(return)
@@ -1134,21 +1659,28 @@
                 jdLines.forEach((l, i) => l.classList.toggle('filled', i < jdStage));
             }
 
-            // ── Planet rotation + shader ──
-            if (!inHero) {
-                contactPlanet.grp.rotation.y += 0.0015;
-                contactPlanet.bodyMat.uniforms.uTime.value = animTime;
-            }
-
-            // ── Hint text ──
-            if (scrollTarget !== lastScrollState) {
-                lastScrollState = scrollTarget;
-                const hints = [
-                    isTouch ? 'tap · swipe up to explore' : 'hover · scroll to explore',
-                    isTouch ? 'swipe up to continue'      : 'scroll to continue',
-                    '', '', '', '',
-                ];
-                if (hintEl) hintEl.textContent = hints[Math.min(scrollTarget, hints.length - 1)] || '';
+            // ── Hint text — updates on scrollTarget OR seenVideos size change ──
+            {
+                const hintKey = `${scrollTarget}:${seenVideos.size}`;
+                if (hintKey !== lastScrollState) {
+                    lastScrollState = hintKey;
+                    let hint = '';
+                    if (scrollTarget === 0) {
+                        hint = isTouch ? 'tap · swipe to explore' : 'hover · scroll to explore';
+                    } else if (scrollTarget === 1) {
+                        hint = isTouch ? 'swipe up to continue' : 'scroll to continue';
+                    } else if (scrollTarget === 2) {
+                        const remaining = Math.max(0, 3 - seenVideos.size);
+                        if (remaining > 0) {
+                            hint = isTouch
+                                ? `swipe ← → or ↑ · ${remaining} more video${remaining > 1 ? 's' : ''}`
+                                : `← → or scroll · ${remaining} more video${remaining > 1 ? 's' : ''} to explore`;
+                        } else {
+                            hint = isTouch ? 'swipe up to reach the contact planet' : 'scroll ↓ to reach the contact planet';
+                        }
+                    }
+                    if (hintEl) hintEl.textContent = hint;
+                }
             }
 
             // Update GPU star uniforms + slow rotation
@@ -1166,6 +1698,15 @@
     </script>
 
 
+    <!-- ── Sound toggle ── -->
+    <button id="sound-toggle" aria-label="Unmute"></button>
+
+    <!-- ── Recent Projects carousel header ── -->
+    <div id="carousel-header" aria-hidden="true">
+        <p class="ch-eyebrow">Deep Creative Studio</p>
+        <p class="ch-title">Recent Projects</p>
+    </div>
+
     <!-- ── Journey progress dots ── -->
     <div id="space-nav-hint">
         <span id="space-nav-text">scroll to continue the journey</span>
@@ -1178,13 +1719,6 @@
         <div class="jd-node" id="jd3"></div>
     </div>
 
-    <!-- ── Contact Us planet layer ── -->
-    <div id="contact-layer" class="planet-layer" aria-hidden="true">
-        <p class="pl-eyebrow" style="color:rgba(255,160,60,0.50)">Let's Talk</p>
-        <h2 class="pl-title" style="background:linear-gradient(135deg,#ff9a3c 0%,#ffffff 50%,#ffb86c 100%);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;filter:drop-shadow(0 0 24px rgba(220,90,0,0.45))">Contact Us</h2>
-        <p class="pl-sub" style="color:rgba(255,180,100,0.55)">Ready to build something extraordinary? Let's talk — we craft digital experiences that leave a mark across space and time.</p>
-        <button class="pl-cta" style="color:rgba(255,160,60,0.75);border-color:rgba(200,100,0,0.28);background:rgba(80,20,0,0.28)">Start a Project</button>
-    </div>
 
     <!-- ── Studio name glow tracker ── -->
     <script>
